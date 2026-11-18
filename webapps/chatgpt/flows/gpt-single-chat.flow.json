@@ -1,0 +1,102 @@
+{
+  "_meta": {
+    "format": "chromeuse-flow/1",
+    "title": "GPT 单轮 chat：新会话发问→鼠标点发送→等输出完成（多轮讨论勿用本文件，见 gpt-single-chat-continued）",
+    "app": "chatgpt",
+    "dpr": 1.5,
+    "created": "2026-09-11",
+    "desc": "vars.topic=讨论议题（AI 的提问全文）。发送用鼠标真实点击发送按钮（用户红线：禁 Enter）。收单断言=url 迁移 /c/（乐观会话创建，WEB: 与 local-chatgpt: 中间态都算）+「你说：」文本锚（效果断言——存在性断言可被历史内容满足，见 playbook §前置操作条件与假绿治理）；完成判别双信号=主信号「开始语音」按钮回归（120s，对停止滞留免疫）+辅信号 absent「停止」按钮（10s 交叉验证）。定位符 V202609210001 修复：09-21 改版废弃 id/testid/data-message-author-role 体系，改 aria-label+type 锚（四形态实弹验证）；aria 值（开始语音/停止）为中文界面实测，英文界面需复核。首页 goto 即新会话；多轮追问改用 gpt-single-chat-continued.flow.json（无 goto、保持当前会话）。"
+  },
+  "vars": {
+    "topic": "这是一条 chromeuse 自动化测试消息，请只回复：OK"
+  },
+  "steps": [
+    {
+      "action": "goto",
+      "url": "https://chatgpt.com/",
+      "desc": "打开首页=新会话（多轮追问请改用 gpt-single-chat-continued.flow.json，勿在本会话重复 goto）",
+      "timeoutMs": 30000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "element": {
+          "domPath": "div.ProseMirror[contenteditable=true], textarea#prompt-textarea"
+        }
+      },
+      "desc": "等输入框渲染（09-21 改版后=无 id 的 ProseMirror contenteditable，class 库级标记实测存活；textarea 旧形态兜底保留）",
+      "timeoutMs": 20000
+    },
+    {
+      "action": "click",
+      "desc": "聚焦输入框（⚠ 本页首条 mouseMoved hover 处理偶发 ~5s，timeoutMs 给足 20s）",
+      "target": {
+        "domPath": "div.ProseMirror[contenteditable=true], textarea#prompt-textarea"
+      },
+      "timeoutMs": 20000
+    },
+    {
+      "action": "type",
+      "desc": "填入讨论议题 {{topic}}（insertText 真实输入，长 CJK 千字级无压力）",
+      "text": "{{topic}}",
+      "timeoutMs": 20000
+    },
+    {
+      "action": "wait",
+      "ms": 1200,
+      "desc": "type→发送 状态同步缓冲（2026-11-13 实证：156 版 type 后立刻 click，点击被吞、URL 不迁 /c/；同锚缓冲后点击成功——ProseMirror/React 状态同步需 ≥1s）"
+    },
+    {
+      "action": "click",
+      "desc": "鼠标真实点击发送按钮（用户红线：禁 Enter 发送；按钮仅在有内容时挂载，锚=type=submit+aria-label 属性存在——语言无关，全页唯一 2026-09-21 实证；完成/空态此按钮不在 DOM）",
+      "target": {
+        "domPath": "button[type=submit][aria-label]"
+      },
+      "timeoutMs": 20000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "url": {
+          "contains": "/c/"
+        }
+      },
+      "desc": "收单断言①（效果断言）：乐观会话创建=URL 迁移到 /c/（WEB: 与 local-chatgpt:（URL 编码 local-chatgpt%3A）中间态都算，随后迁真实 uuid）——消息已提交给服务端，防「按钮 ✓ 但没发出去」假绿",
+      "timeoutMs": 20000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "text": "你说："
+      },
+      "desc": "收单断言②：本轮用户消息已渲染（09-21 改版 data-message-author-role 属性废弃，改「你说：」纯文本锚——新会话页无历史，出现即本轮；text 层 contains 语义）",
+      "timeoutMs": 20000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "element": {
+          "domPath": "button[aria-label=开始语音]"
+        }
+      },
+      "desc": "完成判别主信号：语音按钮回归=空态恢复=生成结束（对「停止」按钮滞留免疫；空态右下角=「开始语音」+「听写」双钮、无 submit——2026-09-21 实弹验证空/完成态同形态；⚠ aria 值中文界面实测，英文界面需复核）",
+      "timeoutMs": 120000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "absent": {
+          "domPath": "button[aria-label=停止]"
+        }
+      },
+      "desc": "完成判别辅信号（交叉验证）：「停止」按钮从 DOM 消失=流式输出结束——主信号过而本步超时=停止滞留异常，转红人工排查（思考中态右下角原位显示 aria-label=停止，无 testid）",
+      "timeoutMs": 10000
+    },
+    {
+      "action": "screenshot",
+      "name": "gpt-single-chat",
+      "desc": "终态留证（tmpdata/events/）",
+      "timeoutMs": 20000
+    }
+  ]
+}

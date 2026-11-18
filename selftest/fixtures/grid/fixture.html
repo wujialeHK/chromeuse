@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>RDG virtualized grid fixture (1000x20, narrow 600px)</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f5f5f5; }
+  /* C9 fixture：600px 宽 = 列虚拟化触发条件（2400px 总列宽 > 视口），600px 高 ≈ 17 行可视 */
+  #wrap { width: 600px; height: 600px; }
+  #grid { width: 100%; height: 100%; }
+  #meta { font: 12px/1.4 monospace; padding: 4px 8px; }
+</style>
+</head>
+<body>
+<div id="meta">rdg-fixture 1000 rows x 20 cols（narrow 600px；C9 selftest）</div>
+<div id="wrap"><div id="grid" data-cu-fixture="grid"></div></div>
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="vendor/react-data-grid.min.js"></script>
+<script>
+(function () {
+  var ROWS = 1000, COLS = 20;
+  var columns = [];
+  for (var c = 0; c < COLS; c++) {
+    columns.push({ key: 'c' + c, name: '列头' + (c + 1), width: 120, resizable: true, sortable: true });
+  }
+  var rows = [];
+  for (var r = 0; r < ROWS; r++) {
+    var row = { id: r + 1 };
+    for (var k = 0; k < COLS; k++) row['c' + k] = 'R' + (r + 1) + '-C' + (k + 1);
+    rows.push(row);
+  }
+  window.__fixture = { rows: rows, columns: columns, rowCount: ROWS, colCount: COLS, rowHeight: 35 };
+
+  function rowGetter(i) { return rows[i]; }
+
+  var RDG = window.ReactDataGrid;
+  var GridComp = RDG && (RDG.default || RDG.ReactDataGrid || RDG);
+  if (typeof GridComp !== 'function') {
+    document.getElementById('meta').textContent = 'ERROR: ReactDataGrid UMD 未就绪: ' + Object.keys(RDG || {}).join(',');
+    return;
+  }
+  ReactDOM.render(
+    React.createElement(GridComp, {
+      columns: columns,
+      rowGetter: rowGetter,
+      rowsCount: rows.length,
+      rowHeight: 35,
+      headerRowHeight: 35,
+      minHeight: 600,
+      enableCellSelect: true
+    }),
+    document.getElementById('grid'),
+    function () { window.__fixture.renderedAt = Date.now(); }
+  );
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  // chromeuse popup-guard 应用域规则库 · jd（保守起步）—— V202610150003
+  //
+  // 加载语义：本文件存在 ⇒ 整体为准（不与全局 config/popup-rules.jsonc 合并）。
+  // 现状：京东促销 banner/弹层特征尚未实弹取证（webapps/jd/webapp.md 亦无弹窗节）——
+  //       故只登记通用高置信形态且 action 一律 hide（不 remove），待 T4/实弹证据回填收紧（P3）。
+  // 纪律：先 dry-run（`node tools/cdp.js popup-guard test --target <页> --seconds 60`）看将拦截清单再启用。
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "id": "jd-overlay-backdrop",
+      "match": {
+        "anyOf": [
+          { "selector": "[class*='overlay-backdrop']" },
+          { "selector": "[class*='popup-backdrop']" }
+        ]
+      },
+      "action": "hide",
+      "scope": "*.jd.com",
+      "evidence": true
+    },
+    {
+      "id": "jd-center-promo-layer",
+      "match": { "anyOf": [{ "rect": { "minW": 640, "minH": 480 }, "zIndexMin": 1500 }] },
+      "action": "hide",
+      "scope": "*.jd.com",
+      "evidence": true
+    }
+  ]
+}

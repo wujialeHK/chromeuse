@@ -1,0 +1,103 @@
+// chromeuse config 模板（linux）——git 共享的推荐值真源；安装后用
+//   node install.js --init-config linux|auto
+// 逐字复制为本目录 config.jsonc（机器实例，gitignored）再按本机情况改值。
+//
+// 四层真源模型：模板层（本文件）→ 实例层（config.jsonc）→ 展示层（references/install.md）→ 运行层（opencode.jsonc）。
+// 实例层无副作用：改它只影响 skill 的提示与指引，不改 MCP 行为；改 MCP 行为走 install.md 对应节。
+// ⚠ 凭据禁入：账号/密码/token 一律不得写入本文件或实例。
+{
+  // 页签治理（C8，V20261113004）：缺省即默认——idleMs=600000 空闲回收 / prefix="cu-" agent 标记 / maxReclaim=5 单次上限
+  "tabs": { "idleMs": 600000, "prefix": "cu-", "maxReclaim": 5 },
+  // schema 版本：结构不兼容变更 +1，CHANGELOG 必须标注迁移说明（实例与模板不等时 selftest #16 fail）
+  "schemaVersion": 3,
+
+  // 环境功能字段：本模板对应环境，须与文件名后缀一致（selftest 机检；install.md 节路由依据）
+  "environment": "linux",
+
+  // ── 共享节 proxy：系统级代理（网络级常量，跨模板与另一份模板深度相等，selftest #8 机检）──
+  "proxy": {
+    // 出口代理登记值；置空串 = 不在 config 登记，改探测环境变量（HTTPS_PROXY → https_proxy → HTTP_PROXY → http_proxy → ALL_PROXY → all_proxy）；全无 = 无代理
+    "httpProxy": "http://127.0.0.1:7890",
+    // 不走代理的地址；代理生效时空值强制下限 localhost,127.0.0.1（专题一逃生舱 beacon 目标必绕代理）
+    "noProxy": "localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
+  },
+
+  // ── 共享节 mcpDefaults：chrome-devtools MCP 推荐参数（与 install.md §1/§2 投影一致，selftest #9 机检）──
+  "mcpDefaults": {
+    "package": "chrome-devtools-mcp@latest",
+    // opencode 客户端对 MCP 请求的超时；上游默认 5000ms 会被重页面 5s 掐死（-32001 真凶，见 references/facts.md）
+    "timeoutMs": 60000,
+    // 启用 click_at(x,y) 坐标兜底（视觉降级通道）
+    "experimentalVision": true
+  },
+
+  // ── 共享节 quota：产物配额与保留期（artifacts report/prune/admit；V202611030005 B3 N2，schemaVersion 2 新增）──
+  // 总配额只统计托管产物（video/screenshot/download/log/record/evidence/fail-report/audit）；other 永不自动删。
+  "quota": {
+    // 托管产物总配额（MB）；超限时 admit 先看到期可释放量，仍不足 → E_QUOTA 拒绝新产物
+    "totalMB": 2048,
+    // 单产物上限（MB）；单次落盘超过即 E_QUOTA（截图/长图/录屏帧/事件流）
+    "maxArtifactMB": 64,
+    // 保留期（天）：到期由 artifacts prune --apply 清理（默认 dry-run，上线首周只 report 观察）
+    "retentionDays": { "video": 3, "screenshot": 7, "download": 7, "log": 7, "record": 30, "evidence": 30, "fail-report": 30, "audit": 30 },
+    // admit 超配额时是否自动清理到期产物（默认 false=只告警；首周观察后按需开启）
+    "autoEvict": false
+  },
+
+  // ── 共享节 redact：输出脱敏（B6b N7，schemaVersion 3 新增）──
+  // 三同源+审计第二层：stdout 文本/信封、落盘 JSON、审计 JSONL 均在**持久化之前**替换 <redacted:NAME>。
+  // 内置模式恒生效：Authorization/Cookie/Bearer/JSON 敏感键（access_token/password/secret/api_key…）。
+  // ⚠ 凭据禁入 skill（红线 #8）：secretsFile 只登记**本机路径**，KEY=VALUE 文件内容不得进本仓库/本文件。
+  "redact": {
+    // KEY=VALUE 每行一个（# 注释；文件不存在/不可读=fail-soft 告警并跳过）；置空串=不加载
+    // 例："/home/<user>/.config/chromeuse/secrets.env"（Windows: "C:\\Users\\<user>\\secrets.env"）
+    "secretsFile": "",
+    // URL query/fragment 参数名（大小写不敏感）；命中值替换 <redacted:参数名>
+    "urlParams": ["access_token", "code", "token", "key", "sign", "sessionid", "password"],
+    // 追加正则（字符串形态：/re/flags 或裸源；非法正则 fail-soft 跳过）；内置模式恒叠加
+    "patterns": []
+  },
+
+  // ── 共享节 bin：ffmpeg/ffprobe 可执行文件路径（可选；V20261117001 平台适配批0 新增）──
+  // 默认=相对 skill 根目录的 bin/（等价内置探测）；已安装别处改成绝对路径（如 /opt/ffmpeg/bin/ffmpeg）。
+  // 相对路径以 skill 根为基准解析、与 cwd 无关；不做 PATH 自动探测（2026-10-28 裁定：bin/ 单点真源）。
+  // 解析序：本节点路径（相对/绝对）> 内置 bin/ 探测（保留 .exe——Windows 用户自放 ffmpeg.exe/ffprobe.exe 亦命中）> 缺失降级+hint。
+  // 下载：https://ffmpeg.org/download.html（Windows 构建：https://www.gyan.dev/ffmpeg/builds/）
+  "bin": {
+    "ffmpegPath": "bin/ffmpeg",
+    "ffprobePath": "bin/ffprobe"
+  },
+
+  // ── 共享节 playwright：Playwright MCP 互补通道（方案二，gated 未启用）──
+  "playwright": {
+    "package": "@playwright/mcp@latest",
+    // gated = 未启用（方案二过 TODO-002 gate 才翻 enabled；翻转须与 references 展示层同一推广原子完成）
+    "status": "gated",
+    "actionTimeoutMs": 30000,
+    "navigationTimeoutMs": 60000,
+    "settleTimeoutMs": 2000,
+    "cdpTimeoutMs": 60000,
+    // browser_snapshot 深度限制（重页面 a11y 遍历降级核心）
+    "snapshotDepth": 5
+  },
+
+  // ── 环境节 mcp：连接层 ──────────────────────────────────────
+  // 当前登记实例：NAS docker 部署——chrome-browser 为 coding-envs 网络服务名（CDP 经 nginx sidecar :9224）
+  // ⚠ 裸机 Linux 勿直接改本模板：--init-config 复制出实例后改实例值（通常 http://127.0.0.1:9222）
+  "mcp": {
+    "browserUrl": "http://chrome-browser:9224"
+  }
+
+  // ── chrome 键（本模板为注释块形态）：仅裸机 Linux 自管 Chrome 时取消注释启用 ──
+  // NAS 的 Chrome 由 coding-envs compose 管理，保持注释勿启用。chrome 键在则三子键必须齐备（selftest #8 机检）。
+  // 启用后 `node tools/cdp.js browser-up` 自动发现+拉起调试实例（--stop 关停 / --status 查询）；等价手动：
+  //   google-chrome --remote-debugging-port=9222 --user-data-dir=/root/chrome-debug
+  // 仅 Chromium 内核（Chrome/Edge/Brave/Chromium）；Firefox/Safari 不支持 CDP。
+  // Chrome 136+ 起调试端口必须配非默认 --user-data-dir；userDataDir 必须独立非默认（绝不指向日常 profile）。
+  //
+  // "chrome": {
+  //   "launchCommand": "google-chrome",
+  //   "debugPort": 9222,
+  //   "userDataDir": "/root/chrome-debug"
+  // }
+}

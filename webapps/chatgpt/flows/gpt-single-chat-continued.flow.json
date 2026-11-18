@@ -1,0 +1,81 @@
+{
+  "_meta": {
+    "format": "chromeuse-flow/1",
+    "title": "GPT 单轮 chat·多轮追问变体：无 goto、当前会话续问（首轮请用 gpt-single-chat.flow.json）",
+    "app": "chatgpt",
+    "dpr": 1.5,
+    "created": "2026-09-11",
+    "desc": "与 gpt-single-chat.flow.json 唯一差异=无 goto 步骤（保持当前会话上下文）。多轮讨论不另沉淀 flow——文档约定：AI 拿到上一轮回复后自己思考，再在当前会话继续发问（本 flow 循环调用，--var topic 换追问内容），循环至无问题 end。收单断言（url /c/ + user 节点）在既有会话中垫底秒过（url 已含 /c/、历史 user 节点在——多轮场景真正的「已发出」证据由 P0-1 type 写后读断言承担）；完成判别双信号=主信号 send-button 回归（120s）+辅信号 absent stop-button（10s 交叉验证）。定位符 V202609210001 修复（09-21 改版 aria+type 锚，与主 flow 同批）"
+  },
+  "vars": {
+    "topic": "请针对上一条回复继续深入：有哪些反对观点？"
+  },
+  "steps": [
+    {
+      "action": "click",
+      "desc": "聚焦输入框（上轮结束后右下角回语音按钮=空态；⚠ 首条 mouseMoved hover 偶发 ~5s，timeoutMs 给足）",
+      "target": {
+        "domPath": "div.ProseMirror[contenteditable=true], textarea#prompt-textarea"
+      },
+      "timeoutMs": 20000
+    },
+    {
+      "action": "type",
+      "desc": "填入追问内容 {{topic}}",
+      "text": "{{topic}}",
+      "timeoutMs": 20000
+    },
+    {
+      "action": "click",
+      "desc": "鼠标真实点击发送按钮（用户红线：禁 Enter 发送）",
+      "target": {
+        "domPath": "button[type=submit][aria-label]"
+      },
+      "timeoutMs": 20000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "url": {
+          "contains": "/c/"
+        }
+      },
+      "desc": "收单断言①：会话页 URL 已含 /c/（垫底秒过——多轮场景真正的收单证据由 P0-1 type 写后读断言承担）",
+      "timeoutMs": 20000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "text": "你说："
+      },
+      "desc": "收单断言②：本轮用户消息已渲染（垫底秒过——上轮「你说：」文本已在，contains 可被历史内容满足；09-21 改版 data-message-author-role 废弃改文本锚）",
+      "timeoutMs": 20000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "element": {
+          "domPath": "button[aria-label=开始语音]"
+        }
+      },
+      "desc": "完成判别主信号：主信号=语音钮回归=空态恢复=本轮流式输出结束（对「停止」滞留免疫；09-21 实弹验证空/完成态同形态；⚠ aria 值中文界面实测）",
+      "timeoutMs": 120000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "absent": {
+          "domPath": "button[aria-label=停止]"
+        }
+      },
+      "desc": "完成判别辅信号（交叉验证）：「停止」从 DOM 消失=本轮流式结束——主信号过而本步超时=停止滞留异常，转红人工排查（思考中态 aria-label=停止原位替换，无 testid）",
+      "timeoutMs": 10000
+    },
+    {
+      "action": "screenshot",
+      "name": "gpt-single-chat-continued",
+      "desc": "终态留证（tmpdata/events/）",
+      "timeoutMs": 20000
+    }
+  ]
+}

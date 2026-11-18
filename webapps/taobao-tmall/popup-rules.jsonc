@@ -1,0 +1,138 @@
+{
+  // chromeuse popup-guard 应用域规则库 · taobao-tmall（严格集）—— V202611130001
+  //
+  // 加载语义：本文件存在 ⇒ **整体为准**（不与全局 config/popup-rules.jsonc 合并）。
+  // 已知弹窗（来源：playbook §专题三深度 2026-10-09 淘宝实测 + 2026-10-15 9.9 促销弹层实证
+  //           + 2026-11-13 红包提醒弹窗实录）：
+  //   ① 9.9 元超值好物精选 促销弹层（容器 ~688×484，关闭钮为纯视觉 div 40×40）；
+  //   ② next-overlay-backdrop 遮罩族（next 系组件库，淘宝/天猫共用）；
+  //   ③ 中央促销浮层（大尺寸 + 高 z-index）；
+  //   ④ 红包提醒弹窗「你有450元红包即将过期」（2026-11-13 会话 ses_e2ca1cc67ffd4HcsXWMCtnrQFx 实录）：
+  //      组件=alicdn tbpc-pop-dynamic-common；DOM=index_module_popMask（全屏 fixed 遮罩，z=auto）
+  //      > index_module_redPacketReminderWrapper（516×592 红包底图卡片）
+  //      > index_module_redPacketPopupContent（300×312）> index_module_redPacketPopupClose（48×53，right:-122/top:-66）；
+  //      实测 rect content=[802,294,300,312]、close=[1176,228,48,53]（中心 1200,254）。
+  //      ⚠ 现有 ③ 未命中原因：遮罩 z=auto（非 ≥1000）且卡片 300×312（非 ≥600×400）——尺寸/z 双闸都不够。
+  //      ⚠ 只删红包卡片会留下全屏 popMask 遮罩挡住整页 → 必须连遮罩一起处置（见 redpacket-mask / pop-dynamic-mask）。
+  // scope 为单值字段，故 taobao / tmall 两域成对登记（同组件库不同域；tmall 为同库类名推定，暂无实弹录像）。
+  //
+  // ✅ authoring 语义（2026-11-13 V20261113013 起）：单 entry 内多键 = **与（AND）**（selector/textContains/rect/zIndexMin
+  //   同时给出须全部满足才命中；anyOf entry 之间仍 OR）——复合规则可直接写，无需再用 CSS :has() 迂回表达约束。
+  //   （历史：2026-11-13 前实现仅 rect+zIndexMin 真 AND，selector/textContains 短路即真，复合会退化为纯文本误杀；
+  //     已修复，本文件新规则「单一 selector」写法为当时规避产物，保留有效、无需回改。）
+  //
+  // 纪律：先 dry-run（`node tools/cdp.js popup-guard test --target <页> --seconds 60`）看将拦截清单再启用；
+  //       误杀排查 = 被 hide 的节点带 data-cu-pg-hidden="<ruleId>" 属性。
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "id": "taobao-next-overlay-backdrop",
+      "match": { "anyOf": [{ "selector": "[class*='next-overlay-backdrop']" }] },
+      "action": "remove",
+      "scope": "*.taobao.com",
+      "evidence": true
+    },
+    {
+      "id": "taobao-99-promo-layer",
+      "match": {
+        "anyOf": [
+          { "textContains": "9.9 元超值好物精选" },
+          { "textContains": "9.9元超值好物精选" }
+        ]
+      },
+      "action": "remove",
+      "scope": "*.taobao.com",
+      "evidence": true
+    },
+    {
+      "id": "taobao-center-promo-layer",
+      "match": { "anyOf": [{ "rect": { "minW": 600, "minH": 400 }, "zIndexMin": 1000 }] },
+      "action": "remove",
+      "scope": "*.taobao.com",
+      "evidence": true
+    },
+    {
+      "id": "taobao-redpacket-layer",
+      // 红包提醒卡片本体（Reminder 包裹层 / Popup 内容层 / 关闭钮；含 CSS 模块哈希前的稳定可读前缀）
+      "match": {
+        "anyOf": [
+          { "selector": "[class*='redPacketReminder']" },
+          { "selector": "[class*='redPacketPopup']" }
+        ]
+      },
+      "action": "remove",
+      "scope": "*.taobao.com",
+      "evidence": true
+    },
+    {
+      "id": "taobao-redpacket-mask",
+      // 营销弹窗通用遮罩（tbpc-pop-dynamic-common 的 PopMask），仅当内含红包节点时整层移除——
+      // 高精度：不误伤同库的优惠券/权益类弹窗；:has() 需 Chrome ≥105（现场 156 实测支持）
+      "match": { "anyOf": [{ "selector": "[class*='popMask']:has([class*='redPacket'])" }] },
+      "action": "remove",
+      "scope": "*.taobao.com",
+      "evidence": true
+    },
+    {
+      "id": "taobao-pop-dynamic-mask",
+      // 兜底：动态营销弹窗遮罩（换皮/卸载残留的空遮罩会挡住整页点击）——hide 起步保留 DOM 供误杀排查；
+      // 本库 PopMask 使用方均为营销模板（redPacket/coupon/myBenefit/priceReduction/slideDrawer），2026-11-13 源码查证
+      "match": { "anyOf": [{ "selector": "[class*='popMask']" }] },
+      "action": "hide",
+      "scope": "*.taobao.com",
+      "evidence": true
+    },
+    {
+      "id": "tmall-next-overlay-backdrop",
+      "match": { "anyOf": [{ "selector": "[class*='next-overlay-backdrop']" }] },
+      "action": "remove",
+      "scope": "*.tmall.com",
+      "evidence": true
+    },
+    {
+      "id": "tmall-99-promo-layer",
+      "match": {
+        "anyOf": [
+          { "textContains": "9.9 元超值好物精选" },
+          { "textContains": "9.9元超值好物精选" }
+        ]
+      },
+      "action": "remove",
+      "scope": "*.tmall.com",
+      "evidence": true
+    },
+    {
+      "id": "tmall-center-promo-layer",
+      "match": { "anyOf": [{ "rect": { "minW": 600, "minH": 400 }, "zIndexMin": 1000 }] },
+      "action": "remove",
+      "scope": "*.tmall.com",
+      "evidence": true
+    },
+    {
+      "id": "tmall-redpacket-layer",
+      "match": {
+        "anyOf": [
+          { "selector": "[class*='redPacketReminder']" },
+          { "selector": "[class*='redPacketPopup']" }
+        ]
+      },
+      "action": "remove",
+      "scope": "*.tmall.com",
+      "evidence": true
+    },
+    {
+      "id": "tmall-redpacket-mask",
+      "match": { "anyOf": [{ "selector": "[class*='popMask']:has([class*='redPacket'])" }] },
+      "action": "remove",
+      "scope": "*.tmall.com",
+      "evidence": true
+    },
+    {
+      "id": "tmall-pop-dynamic-mask",
+      "match": { "anyOf": [{ "selector": "[class*='popMask']" }] },
+      "action": "hide",
+      "scope": "*.tmall.com",
+      "evidence": true
+    }
+  ]
+}

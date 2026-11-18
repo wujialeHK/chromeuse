@@ -1,0 +1,44 @@
+{
+  // chromeuse popup-guard 全局规则库（宽松基线）—— V202610150003
+  //
+  // 语义（加载语义为 2026-10-15 用户裁定，实现单源 = lib/popup-guard.js loadRules）：
+  //   · webapp **无** popup-rules.jsonc → 使用本文件；
+  //   · webapp **有** popup-rules.jsonc → **以该 webapp 配置整体为准（不与本文件合并）**。
+  //   · 命中规则 = match.anyOf 任一 entry 命中；单 entry 内多键同时给出 = 与（AND）。
+  //   · scope = "host[:port][/pathPrefix]"（复用 matchers 分段锚定语义；缺省/非法 = 不生效，宁少勿滥）。
+  //   · action = remove（el.remove()）| hide（style.display='none'，保留 DOM 供误杀排查）。
+  //   · 拦截留痕 = 页侧 window.__cu_pg_log（{ruleId, action, tag, cls, text, ts}，上限 200 条）。
+  //
+  // 设计纪律（保守基线，宁少勿滥——防正常业务弹窗误杀）：
+  //   ① 只收「高置信广告/推广层」特征：全屏遮罩类名、或「大尺寸 + 极高 z-index」的中央浮层；
+  //   ② action 一律 hide 起步（不 remove）——误杀时可从 DOM 直接看到被隐藏的节点；
+  //   ③ 上线前必须过 dry-run：`node tools/cdp.js popup-guard test --target <页> --seconds 60`；
+  //      证据驱动回填（弹窗 DOM 版本迭代快）→ 高发站请在 webapps/<app>/popup-rules.jsonc 单独收紧。
+  //   ④ 严禁合成点击/事件（红线：guard 只做 DOM 清理；点 × 属 MCP 模式 scanner 现成能力）。
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "id": "global-ad-backdrop",
+      // 全屏遮罩类名（bootstrap/next 系 overlay-backdrop 族）——隐藏遮罩本身，业务弹窗本体保留
+      "match": {
+        "anyOf": [
+          { "selector": "[class*='overlay-backdrop']" },
+          { "selector": "[class*='popup-backdrop']" }
+        ]
+      },
+      "action": "hide",
+      "evidence": true
+    },
+    {
+      "id": "global-center-ad-layer",
+      // 中央大浮层 + 极高 z-index（z≥2000）——高置信营销层；不含文本/选择器信号故阈值取严
+      "match": {
+        "anyOf": [
+          { "rect": { "minW": 640, "minH": 480 }, "zIndexMin": 2000 }
+        ]
+      },
+      "action": "hide",
+      "evidence": true
+    }
+  ]
+}

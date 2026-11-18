@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "format": "chromeuse-flow/1",
+    "app": "selftest-fixture",
+    "title": "selftest 断言靶子：match 值域活哨兵（合成 fixture，非业务 flow）",
+    "dpr": 1,
+    "created": "2026-11-17",
+    "desc": "仅供 selftest #44 零回归哨兵与 #46 match 值域活哨兵使用：target.text 兄弟键 match=exact、wait.container.text 兄弟键 match=contains 各一处。合成数据，不连真实站点、不含凭据，勿当应用手册/模板复用。"
+  },
+  "steps": [
+    {
+      "action": "goto",
+      "url": "https://example.com/",
+      "desc": "合成 fixture 占位入口（不用于真实回放）"
+    },
+    {
+      "action": "click",
+      "target": {
+        "text": "Fixture Anchor",
+        "match": "exact"
+      },
+      "desc": "靶子①：target.text 兄弟键 match=exact（#46 值域扫描命中点）"
+    },
+    {
+      "action": "wait",
+      "text": "Fixture Row",
+      "container": {
+        "text": "Fixture Table",
+        "match": "contains"
+      },
+      "desc": "靶子②：wait.container.text 兄弟键 match=contains（#46 值域扫描命中点）"
+    }
+  ]
+}

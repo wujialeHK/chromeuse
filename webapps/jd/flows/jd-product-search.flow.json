@@ -1,0 +1,87 @@
+{
+  "_meta": {
+    "format": "chromeuse-flow/1",
+    "title": "京东商品搜索：首页→点搜索框→输入→点搜索按钮→进结果页",
+    "app": "jd",
+    "dpr": 1.5,
+    "created": "2026-10-15",
+    "desc": "vars.kw=搜索关键词。只固化稳定入口段（首页→结果页）；结果页内翻页/点入商品不进 flow（DOM 季度级腐烂，查看型循环走 URL 直达豁免——playbook §操作路径红线电商域内豁免）。2026-10-15 新版首页实测：经典 input#key 已废弃，改 React 搜索栏——输入=input.jd_pc_search_bar_react_search_input（全页唯一）、搜索按钮=button.jd_pc_search_bar_react_search_btn（文本「搜索」全页唯一；同栏图片搜索/切换钮勿混淆）。收单断言=URL 迁移 search.jd.com（效果断言，防「按钮 ✓ 但没发出去」假绿）+结果页商品容器渲染。"
+  },
+  "vars": {
+    "kw": "护腰坐垫"
+  },
+  "steps": [
+    {
+      "action": "goto",
+      "url": "https://www.jd.com/",
+      "desc": "打开京东首页（门户入口页，goto 合规——操作路径红线允许首页/登录页直达）",
+      "timeoutMs": 30000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "element": {
+          "domPath": "input.jd_pc_search_bar_react_search_input"
+        }
+      },
+      "desc": "等新版搜索栏输入框渲染（React 搜索栏；旧 input#key 已废弃 2026-10-15 实测）",
+      "timeoutMs": 20000
+    },
+    {
+      "action": "click",
+      "desc": "点搜索框聚焦（拟人路径：先点框再输入）",
+      "target": {
+        "domPath": "input.jd_pc_search_bar_react_search_input"
+      },
+      "timeoutMs": 15000
+    },
+    {
+      "action": "type",
+      "desc": "输入搜索关键词 {{kw}}（insertText 真实输入）",
+      "text": "{{kw}}",
+      "timeoutMs": 15000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "element": {
+          "domPath": "button.jd_pc_search_bar_react_search_btn"
+        }
+      },
+      "desc": "铁律①点谁等谁：等「搜索」按钮渲染可点（输入后按钮态稳定）",
+      "timeoutMs": 10000
+    },
+    {
+      "action": "click",
+      "desc": "鼠标真实点击「搜索」按钮（全页唯一；勿点同栏图片搜索钮 jd_pc_search_bar_react_image_search_button）",
+      "target": {
+        "domPath": "button.jd_pc_search_bar_react_search_btn"
+      },
+      "timeoutMs": 15000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "url": {
+          "contains": "search.jd.com"
+        }
+      },
+      "desc": "收单断言（效果断言）：URL 迁移到 search.jd.com——搜索已提交，防「按钮 ✓ 但没发出去」假绿",
+      "timeoutMs": 30000
+    },
+    {
+      "action": "wait",
+      "cond": {
+        "text": "{{kw}}"
+      },
+      "desc": "结果页渲染断言：搜索词在结果页回显（结果头部搜索框回填）——页面真实渲染非空白跳转",
+      "timeoutMs": 20000
+    },
+    {
+      "action": "screenshot",
+      "name": "jd-product-search",
+      "desc": "终态留证（tmpdata/events/）",
+      "timeoutMs": 20000
+    }
+  ]
+}

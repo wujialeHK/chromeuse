@@ -1,0 +1,854 @@
+{
+  "schemaVersion": 1,
+  "groups": [
+    {
+      "id": "diagnostics",
+      "title": "诊断入口（先确认通道活着）",
+      "commands": [
+        "probe",
+        "console",
+        "doctor",
+        "doctor-forensics",
+        "audit",
+        "artifacts",
+        "job",
+        "net",
+        "watch"
+      ]
+    },
+    {
+      "id": "interaction",
+      "title": "交互（真实 Input 域事件）",
+      "commands": [
+        "click",
+        "click-at",
+        "type",
+        "key",
+        "hover",
+        "drag",
+        "upload",
+        "wait",
+        "dialog"
+      ]
+    },
+    {
+      "id": "lifecycle",
+      "title": "页面生命周期",
+      "commands": [
+        "goto",
+        "new",
+        "close",
+        "select",
+        "eval",
+        "targets"
+      ]
+    },
+    {
+      "id": "perception",
+      "title": "感知（只读，零 Input / 零页面副作用）",
+      "commands": [
+        "a11y",
+        "css",
+        "locator",
+        "extract"
+      ]
+    },
+    {
+      "id": "grid",
+      "title": "虚拟化网格（读数走 extract --kind grid；本组有滚动副作用）",
+      "commands": [
+        "grid"
+      ]
+    },
+    {
+      "id": "viewport",
+      "title": "视口与设备模拟（命令级自动还原）",
+      "commands": [
+        "viewport",
+        "emulate"
+      ]
+    },
+    {
+      "id": "capture",
+      "title": "捕获（截图 / 长图 / 录屏）",
+      "commands": [
+        "scroll-shot",
+        "cast",
+        "screenshot"
+      ]
+    },
+    {
+      "id": "automation",
+      "title": "自动化（flow 校验 / 回放 / lint）",
+      "commands": [
+        "flow",
+        "assert",
+        "handoff"
+      ]
+    },
+    {
+      "id": "record",
+      "title": "录制",
+      "commands": [
+        "record",
+        "record-stop"
+      ]
+    },
+    {
+      "id": "forensics",
+      "title": "取证后处理",
+      "commands": [
+        "diff-video",
+        "evidence-pack"
+      ]
+    },
+    {
+      "id": "identify",
+      "title": "识别与预处理",
+      "commands": [
+        "identify",
+        "events-summary",
+        "recorder-convert"
+      ]
+    },
+    {
+      "id": "escape",
+      "title": "逃生舱与运维",
+      "commands": [
+        "exec",
+        "beacon",
+        "popup-guard",
+        "browser-restart",
+        "browser-up"
+      ]
+    }
+  ],
+  "commands": {
+    "audit": {
+      "usage": "cdp.js audit tail [n=20] | cdp.js audit stats [--days 7]",
+      "summary": "结构化审计查询（V202611030004 B3 N3）：落 tmpdata/audit/yyyy-mm-dd.jsonl（按 CHROMEUSE_TZ_OFFSET 时区按天切分，gitignored；CHROMEUSE_AUDIT=0 关闭）",
+      "detail": "字段白名单恒为 {ts,cmd,targetHost,targetPath,action,code,phase,elapsedMs,artifact,sessionId}，**绝不记录 DOM 文本/输入值/URL query 原文/Cookie/Token**（targetPath 只留 pathname 截 200）；tail=最近 n 行原样（跨天按日期倒序收集、输出时间正序）；stats=按命令/结果码/日聚合最近 --days 天；审计自身也被审计（exit 0 单点一行）；保留 30 天随 artifacts prune 一并清理",
+      "flags": [
+        "--days"
+      ],
+      "group": "diagnostics",
+      "since": "V202611030004 B3 N3",
+      "jsonAllowed": false
+    },
+    "artifacts": {
+      "usage": "cdp.js artifacts report | cdp.js artifacts prune [--apply] [--yes] | cdp.js artifacts pin <path...> | cdp.js artifacts pin --remove <path...> | cdp.js artifacts pin --list",
+      "summary": "产物配额/保留期/pin（V202611030005 B3 N2）：report=按类别列文件数/占用/最旧 + 覆盖全部登记目录（video/cast/scroll-shot/downloads/a11y-baseline/flow-checkpoints/log/events/flow-fail/evidence/cdp-forensics/replay-verdict/videodiff/audit/refs/jobs/locks，每项必出现含 0 文件）",
+      "detail": "prune=按保留期清理 + 超总配额按固定序（video→screenshot/download→log）淘汰，默认 dry-run（--apply 才删；>500 文件或 >1GB 需 --yes）；证据类（fail-report/evidence/audit）30 天到期清理但**不参与配额淘汰**；other（未登记目录/test-runs/用户材料）永不自动删；pin=证据类永不自动删清单（tmpdata/artifacts-pinned.json）；配额默认总 2GB/单产物 64MB（config.jsonc quota 段）；分类表/口径 → references/mechanisms.md §11",
+      "flags": [
+        "--apply",
+        "--yes",
+        "--list"
+      ],
+      "group": "diagnostics",
+      "since": "V202611030005 B3 N2",
+      "jsonAllowed": false
+    },
+    "job": {
+      "usage": "cdp.js job list | cdp.js job status <jobId> | cdp.js job cancel <jobId>",
+      "summary": "长任务作业模型（V20261104002 B7 N6）：cast/scroll-shot/record/flow replay 加 --async 即作业化（**须显式 --target**；--async 不支持 --json），主进程立即返回 `jobId=… status=running stateFile=…`",
+      "detail": "状态文件 tmpdata/jobs/<jobId>.json = {jobId,pid,startedAt,cmdline,status:running|done|failed|cancelled,progress,artifact,exitCode}；并发上限默认 4（CHROMEUSE_JOB_MAX 覆盖），满则 **E_BUSY 拒绝**（消息含 running/上限/重试建议；槽位 tmpdata/jobs/slots/slot-N 以 O_EXCL 原子占用，消灭 TOCTOU）；list=活动+终态（终态保留 600s 后惰性清理；running 但进程已死=孤儿自动标 failed）；status=单作业（终态含 exitCode/artifact；支持唯一前缀）；cancel=取消（record 优先 POST /__stop，统一进程组 SIGTERM→SIGKILL 兜底；已完成产物保留=partial 语义，绝不删产物）；孤儿判定= {pid,startedAt,cmdline} 三元组（防 pid 复用误判）；`--wait <ms>` = E_BUSY 时阻塞重试至超时再试一次；契约 → references/mechanisms.md §14",
+      "flags": [],
+      "group": "diagnostics",
+      "since": "V20261104002 B7 N6",
+      "jsonAllowed": false
+    },
+    "extract": {
+      "usage": "cdp.js extract --kind text|table|attr|links|json|grid [--selector <css>] [--attr <name>] [--col <列头文字> --row <N>] [--match exact|contains] [--limit 100] [--target 页] [--timeout ms]",
+      "summary": "结构化抽取（只读；跨同源 iframe；零合成事件/零导航）：text=可见文本（省略 --selector 默认 document.body 全文）/ table=表格首行表头映射为对象数组 / attr=匹配元素的 --attr 属性值（须 --attr）/ links=a[href] 去重（绝对 href+文本+title）/ json=JSON-LD 与内嵌 script[type=\"application/json\"]（数组展开一层，解析失败计 errors）/ grid=虚拟化网格读数（react-data-grid v6 `.react-grid-*`/v7 `.rdg-*`：列头视觉序+visibleRows/totalRows；--col/--row 成对读指定单元格；不滚动——离屏未渲染≠空值，先 grid locate/scroll-to 复读）",
+      "detail": "输出 [extract] 头行 + 紧凑项行（内部结果 {items,count,truncated}，count 为截断前总数；grid 的 items=可见列头文字/视觉序，count=全部列头数，另带 generation/visibleRows/totalRows/cell）；--limit 1~5000 默认 100；本命令不支持 --json（E_USAGE 拒绝面）",
+      "flags": [
+        "--kind",
+        "--selector",
+        "--attr",
+        "--col",
+        "--row",
+        "--match",
+        "--limit"
+      ],
+      "group": "perception",
+      "since": "V20261104002 B4 N8",
+      "jsonAllowed": false
+    },
+    "assert": {
+      "usage": "cdp.js assert [--count <css>=<n>] [--text <文本>] [--no-console-error] [--url <pattern>] [--attr <css>@<name>=<value>] [--fail-fast] [--target 页] [--timeout ms]",
+      "summary": "批量断言（可多条重复旗标；只读）：count=命中数精确等于 / text=可见文本出现（复用 R1 的 TEXT_EXISTS_V2_SRC 两级漏斗与 buildProbeExpr）/ attr=任一匹配元素的属性值精确等于 / url=当前 location.href 匹配正则（/re/flags 或裸正则；**本命令的 --url 是断言模式，不是 browserUrl——浏览器地址走 config**）/ no-console-error=已有 console 历史（listen 0 缓存回放，Chrome 153 实测）无 exception/error",
+      "detail": "输出逐项 {kind,expected,actual,passed}；**默认失败不中断（exit 0）输出完整明细**，--fail-fast 才在首个失败中止并 exit 1；本命令不支持 --json（E_USAGE 拒绝面）",
+      "flags": [
+        "--count",
+        "--text",
+        "--no-console-error",
+        "--url",
+        "--attr",
+        "--fail-fast"
+      ],
+      "group": "automation",
+      "since": "V20261104002 B4 N9",
+      "jsonAllowed": false
+    },
+    "probe": {
+      "usage": "cdp.js probe [--target 选择器] [--out 截图路径] [--timeout ms] [--json]",
+      "summary": "三通道各 5s 独立超时（Browser.getVersion → Runtime.evaluate(readyState) → Page.captureScreenshot），输出存活报告（浏览器进程可达即 exit 0；chrome://newtab 类不出帧页自动跳过通道③）",
+      "detail": "①版本低于 MCP 已知降级线（94，非硬协议门槛）时追加 ℹ advisory 行（提示走 cdp.js 主通道；只提示不改 exit）；--json = chromeuse-cli/1 成功信封，data={url,ok,channels{version:{ok,ms,detail,advisory}|evaluate|screenshot:{ok,ms,detail}}（三通道结论+耗时+版本闸 advisory；①失效时仍发失败信封并带 data）}",
+      "flags": [
+        "--target",
+        "--out",
+        "--timeout",
+        "--json"
+      ],
+      "group": "diagnostics",
+      "since": null,
+      "jsonAllowed": true
+    },
+    "exec": {
+      "usage": "cdp.js exec <method> [paramsJSON | --params-file <path>] [--target 选择器] [--insecure] [--timeout ms]",
+      "summary": "⚠ 破坏性命令类别（Target.close*/Page.navigate/Browser.close/Storage.* 等）务必明确 --target 并自担风险",
+      "detail": "禁 Runtime.evaluate 合成业务事件；**PowerShell/CMD 用户优先 --params-file**（引号吞噬导致 paramsJSON 解析失败时改读 JSON 文件；文件读取复用 eval --file 同款：多行/空/不存在/目录均报错）；--insecure = 连接级忽略证书错误（自签 HTTPS；browser-level 发送，无 sessionId）：**本命令连接存活期间生效、命令结束断连即回退**（秒级时滞+缓存命中例外）；动态应用（WS/持续子资源）整场覆盖用 flow replay --insecure（V20261112001 §17）",
+      "flags": [
+        "--params-file",
+        "--target",
+        "--insecure"
+      ],
+      "group": "escape",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "targets": {
+      "usage": "cdp.js targets [--json] [--url] [--timeout ms]",
+      "summary": "默认 HTTP /json/list 纯 HTTP 无需 WS",
+      "detail": "--json = chromeuse-cli/1 成功信封，data = WS Target.getTargets 结构化投影（chromeuse-targets/1：total/attachedCount/byType + targets[{id,type,title,url,attached}]，脚本消费改读 .data.*）",
+      "flags": [
+        "--json"
+      ],
+      "group": "lifecycle",
+      "since": null,
+      "jsonAllowed": true
+    },
+    "net": {
+      "usage": "cdp.js net [--filter url子串] [--duration ms=5000] [--get requestId] [--out file] [--har path] [--no-redact]",
+      "summary": "采集窗口内记录请求并拉取 body/payload（全量落 tmpdata/events/net-*.json）",
+      "detail": "默认脱敏（B6b N7）：stdout URL 行 + 落盘 JSON + 审计三处按 config.redact.urlParams（access_token/code/token/key/sign/sessionid/password）与内置 Authorization/Cookie/Bearer 模式替换 <redacted:NAME>，写盘前过滤；--no-redact 显式关（审计记 action=redact.disabled）；--har <path> = 采集结束同步导出 HAR 1.2（lib/har.js 最小子集：log/pages/entries[].request/response/timings；头值按 §16 规则替换为引用 <redacted:NAME>，URL/postData/body 同规则，--no-redact 同放行原值）",
+      "flags": [
+        "--filter",
+        "--duration",
+        "--get",
+        "--har",
+        "--no-redact"
+      ],
+      "group": "diagnostics",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "screenshot": {
+      "usage": "cdp.js screenshot [--target 选择器] [--out 路径] [--timeout ms=5000] [--dpr 1~4] [--viewport WxH] [--format png|jpeg] [--quality 0~100] [--annotate] [--json]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data={target,out,bytes,format,quality,via,recoveredByBackoff,emulation,annotate}）",
+      "detail": "失败信封 data=chromeuse-screenshot-fail/1 诊断矩阵；默认存 tmpdata/events/screenshot-<时间>.<png|jpg>；截图增强（V202610210001）：--dpr/--viewport = Emulation.setDeviceMetricsOverride **显式**覆盖视口/DPR（B2/B3 治本：MCP 层 DPR/视口不生效、resize_page 后 innerWidth 不变）+ 截图后 clearDeviceMetricsOverride 还原（finally 全路径；还原后读回 innerWidth/DPR 复核，漂移 log.warn 如实报）；不传旗标=全程零 Emulation 命令（V202609080010「不默认 emulate」不冲突）；施加后读 innerWidth/devicePixelRatio 校验生效，不符如实标注 mismatch 不谎报；--format png|jpeg + --quality 0~100（仅 jpeg 携带，png 忽略+告警）控体积，jpeg 缺省质量 **显式 90**（解析顺序 --quality > env CHROMEUSE_JPEG_QUALITY > 90；env 非法值忽略并 warn——不依赖 Chrome 默认，跨版本可复现；--quality 0 是合法值），输出扩展名按 format 决定（--out 扩展名不一致 → 改写+告警；策略=**取证优先**：不让扩展名与真实编码不符，也绝不因参数风格失败；同理 png 传 --quality 只忽略+告警不报错）；失败自动走兜底体系（V202609220002）：诊断矩阵（runtimeCheck/layoutMetricsCheck/fromSurface 双路径）→ allowFallback 裁决 fromSurface:false 降级 → 冷启动退避重试（默认 2s/5s/10s 总窗 17s，CHROMEUSE_SCREENSHOT_BACKOFF=逗号分隔 ms 档位可配，对照截图+轻探针复查）→ screencast 活跃帧兜底（advisory，-v 帧流活着才兜）；最终失败输出 chromeuse-screenshot-fail/1 JSON 报告（含全矩阵+emulation）；**C5 N11 --annotate（V20261104003）**：Node 侧叠字标注——截图前现场物化 ref 表（与 a11y --ref 同编号源，落 tmpdata/refs/），图上叠红框+黄底 @eN 编号（纯 Node zlib PNG + 内置点阵字模，零依赖零字体），stdout 追加 {refs:[{ref,rect}],skipped,refTable}（--json 在 data.annotate）；**零页面副作用**（不注入 overlay/DOM，真实点击仍走 click --ref 的 X1 闸门+三级定位链）；仅支持 --format png；--dpr/--viewport 可组合（覆盖生效期内取坐标）；物化超时/失败/a11y 降级→明确报错不静默降级；**关闭时截图字节不变**（关闭=分支零参与）",
+      "flags": [
+        "--target",
+        "--dpr",
+        "--viewport",
+        "--format",
+        "--quality",
+        "--annotate",
+        "--json"
+      ],
+      "group": "capture",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "独立短超时截图（默认 tmpdata/events；显式 Emulation 后还原；失败走降级链）"
+    },
+    "cast": {
+      "usage": "cdp.js cast --duration <s> [--out <path.mp4>] [--every-nth 1~30] [--quality 0~100] [--max-width 0~3840] [--no-foreground] [--target 页] [--timeout ms]",
+      "summary": "一次性录屏（二期-4，2026-10-31；GQ-010 F + GQ-001）：Page.startScreencast（format jpeg、quality 默认 70、everyNthFrame 默认 1）收帧 → 到时或连接断开 → Page.stopScreencast（finally 必停）→ bin/ffmpeg 合成 mp4（-framerate <归一 fps> -c:v libx264 -preset veryfast -crf 28 -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -pix_fmt yuv420p（偶数宽高护栏））。**fps 归一（GQ-001 核心）**：Chrome 仅在画面变化时推帧（Chrome 88 静止页实测 6s 仅 1 帧；153 同款稀帧）——fps = 实际帧数 / 首帧→末帧真实跨度（metadata.timestamp；缺失退回 Node 接收时刻，再退录制墙钟），**绝不用标称帧率**（否则静止期被压成快放）",
+      "detail": "清单 fpsSource 如实标 metadata|arrival|elapsed。**帧数 <2 如实失败**并报帧数/时长/帧间隔（min/median/max），不假装成功。ffmpeg 缺失（复用 lib/scroll-shot.js 的 ffmpegAvailable()/ffmpegBins() 探活）→ 帧文件恒保留 + 清单 + 等价离线合成命令。--duration 0.1~600s（上限防误录爆盘）；--max-width 0=原始分辨率，>0 时请求浏览器降采样；前台保障复用 ensureForeground（hidden/读取失败才 Page.bringToFront，失败 fail-soft 记 note；--no-foreground 显式放弃）；产物 tmpdata/cast/cast-<时间戳>.{mp4,frames/,json}，清单 chromeuse-cast/1 {duration,frames,fps,fpsSource,spanMs,intervalsMs,everyNth,quality,out,bytes,frameDir,timedOut,note}；timedOut=true 表示时长到点正常收工（非失败）；--async = 作业化（**须显式 --target**；主进程立即返回 jobId/status=running/stateFile，进度/终态用 `cdp.js job status <id>` 查；--async 不支持 --json）",
+      "flags": [
+        "--duration",
+        "--every-nth",
+        "--quality",
+        "--max-width",
+        "--out",
+        "--async"
+      ],
+      "group": "capture",
+      "since": null,
+      "jsonAllowed": false,
+      "title": "一次性录屏（startScreencast→ffmpeg 合成 mp4；fps 按实际帧/真实跨度归一；帧数<2 失败）"
+    },
+    "beacon": {
+      "usage": "cdp.js beacon [--host 0.0.0.0] [--port 9999] [--dump 目录]",
+      "summary": "零依赖收 POST",
+      "detail": "NAS 页面侧 URL 用 http://opencode:9999；用完即关（R34）",
+      "flags": [
+        "--host",
+        "--port",
+        "--dump"
+      ],
+      "group": "escape",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "scroll-shot": {
+      "usage": "cdp.js scroll-shot [--target 选择器] [--out-dir 目录] [--name 前缀] [--viewport WxH] [--viewport-max-chunk] [--dpr 1~4] [--format png|jpeg] [--quality 0~100] [--max-chunk 4600] [--max-chunk-unit px|css] [--overlap 0] [--no-format-fallback] [--img-promote|--no-img-promote] [--img-settle 1800] [--blank-check|--no-blank-check] [--blank-min-px 800] [--blank-threshold 247] [--blank-strict] [--snap-cuts|--no-snap-cuts] [--snap-window 180] [--snap-px] [--no-foreground] [--settle 200] [--timeout 30000] [--prewarm-samples 20] [--image-timeout 5000] [--keep-slices] [--dry-run]",
+      "summary": "长文/长页长图分段拼接（V202610210002/3/4 + F15，chromeuse-scroll-shot/1）：①图片懒加载（**--img-promote 默认开，--no-img-promote 关**）：预热前遍历 document.images，按 data-src→data-original→data-lazy-src→data-actualsrc→data-backsrc 取真源，仅当 src 仍是占位/空时做**纯属性赋值** img.src=值（不 dispatchEvent/不合成点击，打标 data-cu-promoted=\"1\"），**先只读统计候选再赋值**，等待循环内可补做一轮",
+      "detail": "⚠ 现场影响：改页面 DOM（触发真实网络图片请求）= 渲染加速，不改业务状态，可用 --no-img-promote 关闭；②滚动预热（逐屏下滚 0.9 视口高/步，每步 settle；到底后文档高度连续 3 次采样不变判稳定，上限 --prewarm-samples；回顶）= **背景图与非图片懒加载兜底**（微信等站点 IntersectionObserver+内部队列不可靠，滚动无法保证图片加载）；③就绪判据 classifyImg 三态（placeholder/pending/loaded）：**naturalWidth > 1 才算 loaded**——占位 SVG 的 naturalWidth 恒为 1（旧判据 complete&&naturalWidth>0 会把 `js_img_placeholder` 占位符误判为已加载 → 长图成段纯白，2026-10-21 他方 140 篇实测）；轮询到 pending=0 或 --image-timeout（默认 5000）超时，之后固定等 --img-settle（默认 1800ms，GIF 首帧解码；0 关）再截图；超时未就绪如实记 imagesPending ②分段 step=min(视口高, chunkCss)，段高 min(step, 文档高-y) 末段防重叠；**--max-chunk 默认按物理像素**（--max-chunk-unit px，默认）：chunkCss=floor(maxChunk/dpr)，不变量=每段物理高 ≤ maxChunk（硬保证）；--max-chunk-unit css = maxChunk 直接当 CSS px（旧行为，物理高可超 maxChunk 属显式选择）；⚠ 默认单位变更 → **dpr>1 时与旧行为不同**（旧=CSS px）；--overlap <css px，默认 0>：**不改变切段位置**，非末段每张向下多拍 overlap（captureHeight=cssH+overlap，末段恒 0，须 < chunkCss），清单记每段 overlapPx——0=几何精确可拼接（机器消费），人工阅读长文用 8 左右避免文字被 4600px 切点劈开 ③取图 A 首选：滚到 y 后 Page.captureScreenshot{clip, captureBeyondViewport:true} 几何精确；A 失败重试 1 次（**重试/降级前均重新落位滚动**，防止超时扰动后拍到错位内容，`repositions` 如实记录：段内次数 + 顶层 scrollRepositions 合计）仍败 → B 兜底：逐视口截图 + bin/ffmpeg vstack（ffmpeg 缺失如实失败，不产错图）；清单记录每段实际 via=A|B ④默认 jpeg q90（PNG 整页 ≈16MB），png 时忽略 quality 并告警；PNG 断链降级（默认开，--no-format-fallback 关）：开跑前按 width×dpr × cssH×dpr 估算，单段 >3000000 px 且 format=png → 打印明确告警+建议（改 jpeg 或减小 --max-chunk，**不改用户格式**）；某段 PNG 两连败（含 WS 断开类错误）→ 该段改 jpeg q90 重试一次，成功则清单记 format=jpeg + formatFallback=png-fail；降级后整轮仍中断 → 保持 failed/partial + missingSlices 如实，不假装成功；⚠ 不做自动重连（WS 断开即止损，重连留后续）⑤--timeout = 单段截图超时（默认 30000，非整页）；总预算 = 段数 × 单段，超预算中止剩余段 status=partial；单段失败不整轮报废，记 failedSlices 继续下一段 ⑥--dpr/--viewport 只在显式时施加 Emulation（不默认 emulate），finally 还原视口 + 回滚原 scrollY（失败如实记录）⑥b--viewport-max-chunk（显式布尔）：运行期用 Emulation 把视口**高度设为 chunkCss**、宽度取 --viewport 的宽（未给则当前 innerWidth）、DPR 取 --dpr（未给=原生）；与 --viewport 同时给时高度以本旗标为准（宽度沿用）并打印实际生效值说明覆盖关系；隐含显式 Emulation → finally 必须还原，**不给该旗标时依旧零 Emulation 命令**；副作用红利=step==viewportH 等价视口截图，规避 beyond-viewport 大 clip ⑦--dry-run 只做布局测量+预热探测+分段计划输出（不落图）⑧空白段自检（F13，**默认开且 advisory**）：每段落盘后（A/B/PNG→JPEG 降级段一律）用 bin/ffprobe 取图高 → bin/ffmpeg `scale=1:H:flags=area,format=gray` 取\"每行平均亮度\"字节流（只读原图、不重编码；输出全走 stdout）→ 连续满足 `luma >= 247` 且长度 ≥800 物理 px 的行判\"疑似空白段\"；段字段 blank{suspect,ratio,runs(≤5 条,{from,to,rows}),rows,threshold}，顶层 blankSummary{segments,suspect,suspectIndexes,minPx,threshold,ffmpeg,note,elapsedMs}；**默认只报告不改退出码**（他方 140 篇实测：剩余可疑段经 DOM 复验 remaining=0、截图高=文档高，属**原文设计留白**，见白即失败会造成大量误报）；--blank-min-px（默认 800 物理 px，0=任意游程都报）、--blank-threshold（默认 247，0~255，比 248 低 1 档容 JPEG q90 噪声）可调；--blank-strict 才让可疑段 → 退出码 1（**清单 status 仍记 ok**，另加 blankSummary.strictFail=true——避免把\"截图失败\"与\"内容留白\"混为一谈）；--no-blank-check 关；ffmpeg/ffprobe 缺失或调用失败 → blankSummary.ffmpeg=false + 一行提示，**不阻断截图**（fail-soft）；--dry-run 不检测（没图）⑨永不关闭用户页签⑩前台保障（V202610220003，**默认开**）：进入时读 document.visibilityState（hidden 或读取失败才 Page.bringToFront + 复核，原本 visible 不做多余动作）——**后台页签 raw Page.captureScreenshot 实测会 30s 超时甚至返回旧帧（静默错图）**（同页同位置：后台 30015ms 超时 / bringToFront 后 592ms 正确）；清单 foreground{beforeVisibility,afterVisibility,broughtToFront,userWasOnOtherTab,note}；**默认不自动还原前台**（Chrome 无「查询上一活跃 target」稳定 API，瞎切可能切走用户页签）——broughtToFront=true 时可能已把前台从用户页签切走，如实记录不隐瞒；--no-foreground 显式放弃保障（检测到 hidden 时打印强告警：可能超时/旧帧）⑪切点吸附空白带（F15，**默认开**，--no-snap-cuts 关）：固定切点会把标题栏/产品卡拦腰截断——分段前**一次只读** evaluate（RECTS_EXPR）取可见内容元素 rect（有直接文本节点的元素+替换元素；排除 display:none/visibility:hidden/零面积/position:fixed|sticky），纯函数 snapCuts 顺序推进：每刀以「上一刀+step」为目标，在 ±--snap-window（默认 180 CSS px，32~512）内找「不与任何元素 rect 相交的水平空白带」（最小 12 CSS px）取带中点；**「只向短方向吸附」落地解读**：原切点已在带内→位移 0；否则取带中点；**不为吸附把段拉长（段高不超 max-chunk 计划值）**——三条硬约束 ①段高 ≤ chunkCss ②相邻段 ≥ viewport/4 ③切点 ∈ (0, 文档高)（终点 clamp 到文档高；依据 `webapps/wechat-mp/webapp.md` L77 他方实测记录）；越界 clamp 到边界，clamp 后不在带内→放弃该切点（method:none），末段不吸附；清单段级 snap:{from,to,shift,method:dom|px|none} + 顶层 snapConfig{enabled,windowPx,pxFallback}；--snap-px 开像素法兜底（DOM 无合格带的切点用已落盘段图的 F13 行剖面在段尾 ±window 图内可见部分找带，ffmpeg 缺失/失败/无带 fail-soft 回落原切点；命中则本段 cssHeight/overlapPx 调整 + 尾部按新切点滚动推进重排）；吸附整体异常→全部原切点+stderr 一行告警+清单 note，不阻断截图；--dry-run 只算 DOM 法（无图不跑像素法，如实记 note）；--async = 作业化（**须显式 --target**；主进程立即返回 jobId/status=running/stateFile，进度/终态用 `cdp.js job status <id>` 查；--async 不支持 --json）；⑫beyond-viewport 自动探测（ISSUE-1）：长页首跑双拍对比（captureBeyondViewport true/false；尺寸差主判 + md5 同负判，md5 异时补控制拍区分页面动画）→ 结果缓存 tmpdata/state/beyond-viewport.json（key=浏览器版本，手删即重探）；判定不支持时 A 路径改走段级 Emulation 撑视口无 clip（清单 via=A2），失败仍落 jpeg 降级→B 兜底",
+      "flags": [
+        "--max-chunk",
+        "--max-chunk-unit",
+        "--overlap",
+        "--snap-cuts",
+        "--snap-window",
+        "--snap-px",
+        "--viewport-max-chunk",
+        "--no-format-fallback",
+        "--img-promote",
+        "--img-settle",
+        "--no-blank-check",
+        "--blank-strict",
+        "--blank-min-px",
+        "--blank-threshold",
+        "--no-foreground",
+        "--dry-run",
+        "--async"
+      ],
+      "group": "capture",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "watch": {
+      "usage": "cdp.js watch [--interval 10] [--window 120] [--max-seconds N] [--target 选择器]",
+      "summary": "循环 probe",
+      "detail": "轻探针+截图双死持续 ≥window 判冻结，输出恢复命令建议不自动杀；exit 0=正常退出 2=判定冻结 1=错误",
+      "flags": [
+        "--interval",
+        "--window"
+      ],
+      "group": "diagnostics",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "flow": {
+      "usage": "cdp.js flow validate|replay|lint <file.flow.json> [--var k=v] [--var-json '{\"k\":\"v\"}'] [--target 选择器] [--keep-tab] [--lock] [--insecure] [--no-hit-test] [--post-verify] [--no-kind] [--allow-challenge] [--challenge-wait-ms ms=15000] [--json]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data={ok,reportPath,summary}；回放失败同样带 data，报告本体在 reportPath；进度行转 stderr）",
+      "detail": "flow 引擎；18 原语（计数真源=lib/flow-engine.js ACTIONS.length；V2 表达力 eval/set/cond/loop）/四层定位/真实 Input 事件；原生 DPR 回放不 emulate（emulate 原语为可选工具）；应用安全阀校验 matchers；--lock = 可选显式互斥（默认无互斥——2026-10-19 用户裁定：锁只保留「打开页签并获取 pageId」层=tab-helper 锁页 CAS；多客户端共连干扰风险由纪律兜底）；--no-hit-test 关 X1 四层命中闸门（默认开）；--post-verify 开 X4 点击后复核（实验，默认关）；--no-kind 关 kind 语义层软评分（默认开，同 flow _meta.kind:false）；未指定 --target 时自建标签执行并自关；失败输出结构化报告到 tmpdata/flow-fail/；flow lint <file> = lintContracts 铁律静态机检（M1 闸门-点击同描述符/M2 歧义文本登记/M3 盲等证据/M6 循环高迭代——authoring 期 advisory，不改判回放；ambiguousTexts 从 webapps/<app>/webapp.md 解析，未登记则 M2 跳过；有违例退出码非 0）；--popup-guard = 回放期广告/推广弹窗拦截（P1 A 路线 DOM 守卫，默认关：target 选定后、首步 goto 前预埋 addScriptToEvaluateOnNewDocument + 对已加载页即时执行一次，finally 配对清理移除注册+页侧 observer.disconnect——共享浏览器现场还原；规则双层=webapp 有 popup-rules.jsonc 整体为准/无则全局 config/popup-rules.jsonc；拦截留痕读 window.__cu_pg_log 输出条数+规则 id 归并）；--popup-rules <file> = 显式规则文件（跳过 app/全局加载）；--async（仅 replay）= 作业化（**须显式 --target**；立即返回 jobId/status=running/stateFile，进度/终态用 `cdp.js job status <id>` 查；--async 不支持 --json）；--insecure（仅 replay）= 连接级忽略证书错误（browser-level，连接存活期=**整场回放覆盖**、断连即回退）——自签 SPA 的 WS/持续子资源正确挂点；与 --async 组合经 argv 原样转发自动继承（V20261112001 §17）；**C4 bot challenge（#124）**：每个 goto 步导航就绪后做同款只读检测（lib/challenge.js 单源：五类信号多信号合取/六墙+captcha+access denied）——默认命中即失败停步（失败报告 error.code=CHALLENGE_DETECTED，--json 信封码 E_POLICY_DENIED），--allow-challenge 仅告警继续；等待预算 CLI --challenge-wait-ms > _meta.challengeWaitMs > 默认 15000ms，_meta.allowChallenge:true 亦可声明放行",
+      "flags": [
+        "--no-hit-test",
+        "--post-verify",
+        "--no-kind",
+        "--popup-guard",
+        "--insecure",
+        "--allow-challenge",
+        "--challenge-wait-ms",
+        "--json",
+        "--async"
+      ],
+      "group": "automation",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "flow 校验/回放/lint（四层定位+真实 Input；--lock 互斥；失败落 flow-fail/）"
+    },
+    "locator": {
+      "usage": "cdp.js locator probe|suggest|verify|pick [--text X] [--match exact|contains] [--role R] [--dom-path CSS] [--container '<json>'] [--js-listeners] [--cursor-pointer] [--target <pageId|url子串|title子串>] [--json]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data=旧 locator 报告；suggest 未收窄/verify 无候选或高亮失败/pick 超时为失败信封且带 data）",
+      "detail": "元素捕获/定位验证工具（V202610190001，跨同源 iframe；语义对齐 target-resolver 的 X1 闸门/container 文法）：probe=列候选（framePath/tag/rect/visible/offsetParentOk/hitOk/area/cssPath + 唯一性结论；不可见项也如实列出供诊断）｜suggest=递归收窄（多候选→共同祖先链逐级构造 container:{text|domPath} 重算，唯一即止；跨 frame 如实报 cross-frame）｜verify --target-json '<flow target>'=解析 best→高亮（Overlay+CSS outline）+ 截图（默认 tmpdata/events/locator-<stamp>.png，--no-screenshot 关；--ms 高亮时长默认 3000）供读图视觉确认｜pick [--seconds 60] [--no-block]=注入一次性 capture-phase 点击拾取器（DevTools select element 式；拾取即自摘；默认 preventDefault/stopPropagation 不触发业务动作），输出三层描述符+唯一性复算+建议 target JSON。退出码：probe/verify 采集成功=0（非唯一仍 0，结论见输出）；suggest 未收窄/pick 超时=1。**B4 候选诊断**：probe 候选追加 disabled/readOnly/aria-disabled/cursor:not-allowed + interactability 一句话判读（「控件被禁用/只读——非定位失败」；不改 X1 判定）。**C11 N12 候选扩展（仅 probe，默认关）**：--js-listeners=CDP DOMDebugger.getEventListeners（零 Debugger 前提）全页直接 click 监听节点并入候选（source=js-listener；只覆盖直接监听——React 根委托元素级不可见、handler 源码不可得；能力不支持按 error.code 能力闸降级不崩）；--cursor-pointer=getComputedStyle cursor:pointer 兜底候选（与 --js-listeners 可组合；可单独作为锚点）；新旗标只扩候选/加 source 标注，X1 判定与默认输出逐字节不变",
+      "flags": [
+        "--text",
+        "--container",
+        "--js-listeners",
+        "--cursor-pointer",
+        "--json"
+      ],
+      "group": "perception",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "元素捕获/定位验证（probe/suggest/verify/pick；跨同源 iframe；歧义不盲试）"
+    },
+    "click": {
+      "usage": "cdp.js click --text <文本>|--selector <cssPath>|--point \"x,y\"（或 --x,y \"x,y\" / --x N --y M）|--ref @eN [--match exact|contains] [--nth N] [--dbl] [--no-scroll] [--expect-text <文本>|--expect-value <值>|--expect-selector <css>|--expect-count <css>=<n>] [--effect-ms ms=30000] [--no-wait-effect] [--target 页] [--timeout ms=10000] [--json]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data={target,via,spec,element,point,clickable,scrolled,double,clicks}；定位失败为 E_LOCATE 失败信封且 data 带诊断；--expect-* 激活时 data 追加 phase/effect，stalled=报告型失败 E_TIMEOUT）",
+      "detail": "按文本/CSS 定位并**真实鼠标点击**（Input.dispatchMouseEvent：mouseMoved→mousePressed→mouseReleased，isTrusted=true，红线一）；文本/CSS 定位复用 lib/locator 跨同源 iframe + X1 四层闸门（visible/offsetParent/elementFromPoint）；**多候选不猜**=报候选清单需 --nth N 显式选定或收窄；目标在视口外默认对最高排序候选 scrollIntoView 一次后重采（只滚动不改 DOM；--no-scroll 关）；--dbl/--double=双击（clickCount 1→2，60ms 间隔）；MCP uid 是快照期临时句柄 raw CDP 无法解析——--uid 显式拒绝，用 --selector/--text。**--expect-* = 交互后生效判据**（至多一种；裸命令不带=旧行为逐字节不变、零额外 CDP）：confirmed=判据在 --effect-ms 窗口内成立 / effect_pending=有可观察进展但判据未成立（exit 0，**非成功非失败**，调用方须继续观察）/ dispatched=--no-wait-effect 送达即返 / stalled=窗口内零进展（exit 1，stderr+信封 hint 给 screenshot/console/wait/doctor 取证指引）；--expect-value 主体值口径：input/textarea/select 读 value，其余读文本（trim）；--effect-ms 默认 30000、范围 500~180000；**--ref @eN = a11y --ref 产出的引用句柄**（与 --text/--selector/--point 互斥、不接受 --nth/--match）：解析链=cssPath（身份标记确认）→role+name→container 收窄，命中唯一才点；导航/刷新/元素被替换/定位链命中 0 → E_REF_STALE，命中 >1 → E_AMBIGUOUS，都不猜不点错；失效即重新 a11y --ref",
+      "flags": [
+        "--text",
+        "--selector",
+        "--point",
+        "--ref",
+        "--nth",
+        "--dbl",
+        "--expect-text",
+        "--expect-value",
+        "--expect-selector",
+        "--expect-count",
+        "--effect-ms",
+        "--no-wait-effect",
+        "--json"
+      ],
+      "group": "interaction",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "真实鼠标点击（文本/CSS/坐标/@eN 引用；X1 四层闸门；多候选不猜；--expect-* 四态判据）"
+    },
+    "click-at": {
+      "usage": "cdp.js click-at <x,y> [--dbl] [--target 页] [--timeout ms]",
+      "summary": "坐标直点（真实 Input 域鼠标事件；双击=clickCount 1→2 间隔 60ms，蓝本 clickat 手法）。坐标是视口 CSS 像素（含 iframe 偏移由 locator 计算，手喂坐标自行换算）",
+      "detail": "",
+      "flags": [
+        "--dbl"
+      ],
+      "group": "interaction",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "type": {
+      "usage": "cdp.js type --text <值> [--into-text <文本>|--into-selector <cssPath>|--into-point \"x,y\"|--ref @eN] [--match exact|contains] [--nth N] [--append] [--echo-text] [--no-redact] [--expect-text <文本>|--expect-value <值>|--expect-selector <css>|--expect-count <css>=<n>] [--effect-ms ms=30000] [--no-wait-effect] [--target 页] [--timeout ms] [--json]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data={target,into,append,cleared,value,valueChars,valueEcho,active,focusEditable,clicked}；测试输入值默认不回显：value=null+valueChars=长度，--echo-text 才回显且仍过脱敏；--expect-* 激活时追加 phase/effect，stalled=报告型失败 E_TIMEOUT）",
+      "detail": "真实键盘输入：默认先 Ctrl+A 全选 + Delete 清空再 Input.insertText（蓝本手法，受控组件/输入法更稳）；--append=不清空直接续写；--into-* = 先按该定位真实点击聚焦（省略=当前焦点）；发送后只读 evaluate 复核 activeElement 可编辑性与实测值，焦点不在可编辑元素时如实告警（输入可能无效）；**--echo-text** 显式回显输入值/实测值（默认只打字符数：原默认打印输入值=现存泄漏路径，B6b 收紧）；**--text \"%KEY%\"** 占位符输入（secretsFile 或同名环境变量提供真值；真值只进 CDP insertText，stdout/JSON 只显示 <placeholder:KEY>）；**--no-redact** 关输出脱敏（默认开；审计记 action=redact.disabled）；**--expect-value** 读交互主体元素（--into-* 的定位候选；无则 document.activeElement）当前值精确比较（表单控件读 value；其余读文本）；--expect-* 四态/exit/默认 30000 语义同 click（裸命令逐字节不变）；**--ref @eN**（别名 --into-ref）= 用 a11y --ref 的引用句柄聚焦（与 --into-* 互斥；失效契约同 click：E_REF_STALE/E_AMBIGUOUS 不猜）",
+      "flags": [
+        "--text",
+        "--into-selector",
+        "--ref",
+        "--append",
+        "--echo-text",
+        "--no-redact",
+        "--expect-text",
+        "--expect-value",
+        "--expect-selector",
+        "--expect-count",
+        "--effect-ms",
+        "--no-wait-effect",
+        "--json"
+      ],
+      "group": "interaction",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "真实键盘输入（默认清空后 insertText；输入值默认不回显；--expect-* 同 click 四态）"
+    },
+    "key": {
+      "usage": "cdp.js key <Enter|Tab|Esc|Backspace|Delete|Space|ArrowUp/Down/Left/Right|Home|End|PageUp|PageDown|F1~F12|字母|数字|标点> [--times N=1] [--expect-text <文本>|--expect-value <值>|--expect-selector <css>|--expect-count <css>=<n>] [--effect-ms ms=30000] [--no-wait-effect] [--target 页]",
+      "summary": "真实按键（Input.dispatchKeyEvent keyDown/keyUp，键码表单源 lib/drive.js KEY_TABLE；text 规则：字符键=字符、Enter=\\r、Space=空格、导航/功能键无 text）",
+      "detail": "组合键 Ctrl+A / Shift+Tab / Ctrl+Shift+ArrowLeft（修饰位 Alt=1/Ctrl=2/Meta=4/Shift=8；带 Ctrl/Alt/Meta 时不产字符）；--expect-* 四态 phase/exit 语义同 click（主体元素=document.activeElement；本命令不支持 --json，phase 见 stdout/stderr；裸命令逐字节不变）",
+      "flags": [
+        "--times",
+        "--expect-text",
+        "--expect-value",
+        "--expect-selector",
+        "--expect-count",
+        "--effect-ms",
+        "--no-wait-effect"
+      ],
+      "group": "interaction",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "hover": {
+      "usage": "cdp.js hover --text <文本>|--selector <cssPath>|--point \"x,y\"|--ref @eN [--match exact|contains] [--nth N] [--no-scroll] [--target 页]",
+      "summary": "真实鼠标悬停（单发 Input.dispatchMouseEvent mouseMoved；同 click 的定位/多候选不猜/视口外滚入规则；用于展开 hover 菜单/浮层）",
+      "detail": "--ref @eN = 引用句柄（a11y --ref 产出，解析链/失效契约同 click）",
+      "flags": [
+        "--text",
+        "--ref",
+        "--nth"
+      ],
+      "group": "interaction",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "wait": {
+      "usage": "cdp.js wait --text <文本> | --expr <JS 表达式> [--match exact|contains] [--interval 700] [--timeout 30000] [--target 页] [--json]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data={found,text|expr,match?,waitedMs,polls,value?,candidate?,target}；超时为 E_TIMEOUT 失败信封且 data.found=false）",
+      "detail": "轮询等待文本出现（lib/locator 跨同源 iframe 收集；节距默认 700ms 蓝本实测参考、总超时默认 30000ms、上限 600000ms）；到时未出现 exit 1 并报轮询次数。注意 --timeout 在本命令语义是**总等待预算**（单次 evaluate 另按 5000ms 上限）；--expr <JS 表达式> = 轮询 Runtime.evaluate truthy（returnByValue+awaitPromise；与 --text 互斥，同给 E_USAGE）：主 frame 执行**不跨 iframe**（iframe 内状态自写 frames[x].document…）；表达式异常/求值失败记最后错误**继续轮询**，到时未为真才 exit 1（报轮询次数+最后错误）；表达式应为**只读幂等**；等待读数链路=goto --insecure 一次导航 + 后续读命令不带旗标（wait 不在 --insecure 四命令面——只读 evaluate 零证书校验触发；V20261112001 §17 附节）",
+      "flags": [
+        "--text",
+        "--expr",
+        "--interval",
+        "--timeout",
+        "--json"
+      ],
+      "group": "interaction",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "轮询等待文本或 JS 表达式为真（--text 跨同源 iframe；--expr 主 frame；节距默认 700ms、总超时 30s 上限 600000ms）"
+    },
+    "console": {
+      "usage": "cdp.js console [--listen 3000] [--json] [--out file] [--target 页] [--timeout ms]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data=旧 chromeuse-console/1 报告，脚本改读 .data.*）",
+      "detail": "console 取证（Runtime.enable + Log.enable 短连接监听窗口）：收 Runtime.consoleAPICalled / Runtime.exceptionThrown / Log.entryAdded，到时打印后退出；**CDP 无任意长度历史**——Chrome 153 实测 `Runtime.enable` 会回放 console 历史（11 条）；`Log.enable` 未观测到 console API 条目（只收浏览器/网络日志）；Chrome 88 是否回放未验证（能力差异，见 88 分叉清单）。条目按 timestamp 标 pre:true 为「连接前缓存」；--listen 0 = 只读浏览器侧 console 缓存（短排水窗 120ms）立即返回；上限 300000ms；全量报告（ts/url/line/stack 首帧）恒落 tmpdata/events/console-<stamp>.json。排错顺序：先在页面上复现动作前起 listen，或改用 MCP list_console_messages（自带缓冲）",
+      "flags": [
+        "--listen",
+        "--json"
+      ],
+      "group": "diagnostics",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "console 监听取证（先 --listen 再复现；--listen 0 读缓存；落 tmpdata/events）"
+    },
+    "viewport": {
+      "usage": "cdp.js viewport [WxH] [--dpr N] [--reset] [--target 页] [--timeout ms]",
+      "summary": "视口覆盖（Emulation.setDeviceMetricsOverride；WxH 形如 1000x700，--dpr 1~4）",
+      "detail": "无参或 --reset = clearDeviceMetricsOverride 兜底清除。**会话级语义（Chrome 153 实测）**：Emulation 覆盖只在施加它的 CDP session 存活期间对全浏览器可见，session 断开即被 Chrome 清理——因此本命令在结束前**自动还原**（stdout 打印前/中/后三段实测值供核对），不跨命令保持、不修改真实窗口大小（dontSetVisibleSize:true）。需要在后续命令/截图里保持视口 → 用 screenshot --viewport（一次性截图、finally 还原）或 flow 回放 _meta.viewport / MCP resize_page（长驻会话）。⚠ 视口礼仪（playbook §视口三态策略 / SKILL 红线）：本命令=操作者显式意图，与 flow 回放三态策略（在场纯跟随/不在场托底）互不干涉，仅服务交互式操作/调试；绝不给用户页签留 Emulation 残留",
+      "flags": [
+        "--dpr",
+        "--reset"
+      ],
+      "group": "viewport",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "emulate": {
+      "usage": "cdp.js emulate --ua <ua>|--media print|screen [--reset] [--target 页] [--timeout ms]",
+      "summary": "UA/媒体模拟（Emulation.setUserAgentOverride / setEmulatedMedia；media 仅 print|screen）",
+      "detail": "--ua 与 --media 可同给。**会话级语义（Chrome 153 实测）**：模拟只在施加它的 CDP session 存活期间生效，session 断开即回原生——本命令结束前**自动双清**（UA + media），stdout 打印前/中/后三段实测值。清除路径：先试 clearUserAgentOverride/clearEmulatedMedia，遇 -32601（Chrome 153 已无这两个 clear 命令）回落 setUserAgentOverride{userAgent:\"\"}/setEmulatedMedia{media:\"\"}（88 兼容就地分叉）；--reset = 只做双清兜底。跨命令保持模拟 → 用 flow emulate 原语或 MCP 长驻会话",
+      "flags": [
+        "--ua",
+        "--media",
+        "--reset"
+      ],
+      "group": "viewport",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "dialog": {
+      "usage": "cdp.js dialog [--auto accept|dismiss|cancel] [--text <prompt答复>] [--wait ms] [--target 页] [--timeout ms]",
+      "summary": "原生 JS dialog（alert/confirm/prompt/beforeunload）一次性监听/处置：Page.enable → 听 Page.javascriptDialogOpening → 按 --auto 发 Page.handleJavaScriptDialog（cancel=dismiss 别名），窗口内首个事件后退出。**CDP 无「查询当前挂起对话框」API**：①无 --wait/--auto=400ms 短观察窗（仅捕获窗口内新开 dialog，监听前已打开的不会回放），失败 exit 1 并说明限制",
+      "detail": "②--auto 未给 --wait=默认 10000ms 监听窗；--wait 域 100~600000ms；③一次性短连接无法常驻自动处置——正确用法=先在后台跑本命令预埋监听，再由另一命令触发弹窗；④无 --auto 只报告不处置（页面仍阻塞）；⑤--text 仅 --auto accept 的 prompt 答复可用",
+      "flags": [
+        "--auto",
+        "--text",
+        "--wait"
+      ],
+      "group": "interaction",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "upload": {
+      "usage": "cdp.js upload <file>[,<file>...] [--file <path>] [--into-text <文本>|--into-selector <cssPath>|--into-point \"x,y\"] [--match exact|contains] [--nth N] [--no-scroll] [--browser-path] [--expect-text <文本>|--expect-value <值>|--expect-selector <css>|--expect-count <css>=<n>] [--effect-ms ms=30000] [--no-wait-effect] [--target 页] [--timeout ms]",
+      "summary": "向 file input 注入文件（DOM.setFileInputFiles——CDP 官方文件注入通道，不是 DOM 合成事件，红线一不涉及）：支持多文件（逗号分隔/多个位置参数/--file；去重），路径按进程 cwd 解析为绝对路径并校验存在/普通文件/可读。⚠ **files 路径由浏览器进程解析**：客户端与浏览器文件系统隔离时 Chrome 不报错——静默创建 0 字节 File（只有名字）",
+      "detail": "因此注入后**比对本地 size 与浏览器读回 files[].size，不符如实 exit 1（防假绿）**。`--browser-path` = 路径只在浏览器进程可见（如 chrome-browser 容器的 /config/Downloads）：**须传浏览器侧绝对路径**（POSIX 与 Windows 盘符双标准），原样下发不做本地 resolve（否则 Windows CLI 会给容器路径加盘符）；跳过客户端存在性校验，内容校验降级为「读回 size>0」（0 字节按失败收割）。定位复用一期 interactSpec（--into-text/--into-selector/--into-point；省略=当前焦点）；非 <input type=\"file\"> 拒绝并提示（disabled/multiple=false 多文件同样拒绝）；注入后读回 files 名列表复核；--expect-* 四态 phase/exit 语义同 click（本命令不支持 --json；裸命令逐字节不变）",
+      "flags": [
+        "--into-selector",
+        "--browser-path",
+        "--expect-text",
+        "--expect-value",
+        "--expect-selector",
+        "--expect-count",
+        "--effect-ms",
+        "--no-wait-effect"
+      ],
+      "group": "interaction",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "drag": {
+      "usage": "cdp.js drag --from-text <文本>|--from-selector <cssPath>|--from-point \"x,y\"（或 --from-x,y / --from-x N --from-y M） --to-text <文本>|--to-selector <cssPath>|--to-point \"x,y\"（或 --to-x,y / --to-x N --to-y M） [--steps 5] [--hold 80] [--gap 90] [--nth N] [--to-nth N] [--no-scroll] [--expect-text <文本>|--expect-value <值>|--expect-selector <css>|--expect-count <css>=<n>] [--effect-ms ms=30000] [--no-wait-effect] [--target 页] [--timeout ms]",
+      "summary": "真实鼠标拖拽（Input 域：mouseMoved(buttons:0)→mousePressed(left,buttons:1)→N 段插值 mouseMoved(left,buttons:1)→mouseReleased(buttons:0)；坐标=CSS 视口 px，附 screenX/Y 忠实映射）。轨迹参数复用 flow-engine drag 原语已实证值（G3 报告 §5.6：5 段/90ms 段间/80ms hold；planDragPath 单源）——--steps 1~50（默认 5，防网站对速度敏感）、--hold/--gap 0~5000ms。两端各三选一（文本/CSS/坐标），多候选不猜需 --nth/--to-nth",
+      "detail": "视口外默认 scrollIntoView 一次（--no-scroll 关）；收尾语义：released 后 dragend 即终点，DOM mouseup 被拖拽管线消费，断言勿锚 mouseup；--expect-* 四态 phase/exit 语义同 click（主体元素=落点候选；本命令不支持 --json；裸命令逐字节不变）",
+      "flags": [
+        "--from-text",
+        "--to-text",
+        "--steps",
+        "--hold",
+        "--gap",
+        "--expect-text",
+        "--expect-value",
+        "--expect-selector",
+        "--expect-count",
+        "--effect-ms",
+        "--no-wait-effect"
+      ],
+      "group": "interaction",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "goto": {
+      "usage": "cdp.js goto <url> [--target 页] [--insecure] [--timeout ms=30000] [--allow-challenge] [--challenge-wait-ms ms=15000] [--json]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data=page.navigate 结果 + target/redirected；超时/网络错误为失败信封且带 data；C4 challenge 阻断=E_POLICY_DENIED 失败信封带 data.challenge）",
+      "detail": "页面导航（Page.navigate）：协议白名单 http:/https:/file:/about:/chrome:（chrome:// 仅诊断场景；javascript:/data:/ftp: 等拒绝，业务写操作走 Input 域）；等待=Page.enable → Page.navigate → 同时听 Page.loadEventFired + 轮询 document.readyState，用 Page.frameNavigated（主 frame）标记新文档提交（防导航提交前读到旧页 readyState=complete 的假完成）；Page.enable 失败退化为纯 readyState 轮询（结果标 pageEnabled:false）；--timeout = **总加载预算**（默认 30000ms，500~600000ms），超时/网络错误如实 exit 1（不伪装成功）；同文档导航（无 loaderId）立即返回；输出最终 URL（重定向后）+ readyState/loadEvent/轮询次数；--insecure = 连接级忽略证书错误（自签 HTTPS；browser-level 发送，无 sessionId）：**本命令连接存活期间生效、命令结束断连即回退**（秒级时滞+缓存命中例外）；动态应用（WS/持续子资源）整场覆盖用 flow replay --insecure（V20261112001 §17）；**C4 bot challenge（#124）**：导航完成后只读页侧扫描（title/正文/DOM/Cookie 名/全局变量五类信号，特征表 lib/challenge.js 数据化单点可热修；六墙 Cloudflare/Akamai/DataDome/PerimeterX/Imperva/AWS WAF + 通用 captcha 墙 + access denied 页），单墙命中 ≥2 类**不同**信号才判定（多信号合取防误报）；默认命中即阻断（exit 1，码 E_POLICY_DENIED，消息前缀 CHALLENGE_DETECTED，附接管提示+禁自解/禁连环重试）；CF 类非交互盾先有限自愈等待（默认 15000ms，每 800ms 重检；--challenge-wait-ms 可配，0=不等待）；--allow-challenge = 不阻断仅提醒（exit 0，效率优先自担风险）；非 http(s) 页（file:/about: 等）不检测",
+      "flags": [
+        "--timeout",
+        "--insecure",
+        "--allow-challenge",
+        "--challenge-wait-ms",
+        "--json"
+      ],
+      "group": "lifecycle",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "页面导航（协议白名单 + loadEvent/readyState 双信号 + 主 frame 提交闸门防假完成）"
+    },
+    "new": {
+      "usage": "cdp.js new [url] [--background] [--insecure] [--timeout ms] [--allow-challenge] [--challenge-wait-ms ms=15000]",
+      "summary": "新开页签（Target.createTarget；缺省 about:blank，URL 同一协议白名单）",
+      "detail": "默认前台打开（--background 后台）；**stdout 恒回显完整 targetId=**（可脚本化配对：TID=$(node tools/cdp.js new https://x | sed -n 's/.*targetId=\\([^ ]*\\).*/\\1/p')）；**页签礼仪：谁开谁关——agent 开的页签任务结束必须 close**；--insecure = 连接级忽略证书错误（自签 HTTPS；browser-level 发送，无 sessionId）：**本命令连接存活期间生效、命令结束断连即回退**（秒级时滞+缓存命中例外）；动态应用（WS/持续子资源）整场覆盖用 flow replay --insecure（V20261112001 §17）；**C8 页签治理（#123）**：新开页签登记 tmpdata/tab-registry/agent-tabs.json（agent 标记；**未登记=用户页签永不回收**），about:blank 尽力设 title 前缀 cu-（页面导航后会被站点覆盖，权威标记=注册表；targets 文本对登记项打 [cu]）；new 末尾顺带回收空闲 agent 页签（默认 10min；config tabs.reclaim/idleMs/markPrefix/maxPerRun 可调，env CHROMEUSE_TABS_RECLAIM=0 一键关）；**C4 bot challenge（#124）**：URL 非 about:blank 时附着新页签、等页侧就绪（≤8000ms）后做同款只读检测（特征表/多信号合取/有限自愈等待全同 goto）——默认命中阻断（exit 1，E_POLICY_DENIED，CHALLENGE_DETECTED），--allow-challenge 仅提醒；**targetId 仍恒回显**（脚本契约不变）",
+      "flags": [
+        "--background",
+        "--insecure",
+        "--allow-challenge",
+        "--challenge-wait-ms"
+      ],
+      "group": "lifecycle",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "close": {
+      "usage": "cdp.js close <targetId> | --all-but <保留 targetId> | --match <url/title 关键字> [--yes] [--timeout ms]",
+      "summary": "关闭页签（Target.closeTarget，仅 page 型）：<targetId> 支持完整 id 或唯一前缀（多前缀不猜=列候选 exit 1）",
+      "detail": "--match 按 url/title 大小写不敏感包含匹配——**唯一命中直接关；多命中不猜，无 --yes 只列候选并 exit 1（不关任何一个）**；--all-but 是批量破坏面，**必须 --yes** 才执行，无 --yes 只列将关闭清单；stdout 逐条回显 targetId 供配对；partial 失败逐个如实报并 exit 1；**C8（#123）**：close 末尾顺带回收空闲 agent 页签（仅注册表项；用户页签永不回收；job 运行/lock 未过期/handoff 等待中跳过本轮）",
+      "flags": [
+        "--all-but",
+        "--match",
+        "--yes"
+      ],
+      "group": "lifecycle",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "select": {
+      "usage": "cdp.js select <targetId> [--timeout ms]",
+      "summary": "激活页签（Target.activateTarget；id 或唯一前缀，多前缀不猜列候选 exit 1）",
+      "detail": "用于 new/goto 后把页签置前做视觉/截图确认",
+      "flags": [],
+      "group": "lifecycle",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "eval": {
+      "usage": "cdp.js eval --file <path> | cdp.js eval <expression> [--target 页] [--timeout ms]",
+      "summary": "页面求值（Runtime.evaluate returnByValue:true + awaitPromise:true + userGesture:false）：--file 读文件内容作 expression（**避 shell 引号地狱**，多行/引号/反引号安全）",
+      "detail": "内联表达式为便捷入口；文件空/目录/不可读建连前报错；表达式抛异常如实 exit 1（打印异常描述+行号）；返回值 JSON 打印（undefined/unserializable 如实标注）",
+      "flags": [
+        "--file"
+      ],
+      "group": "lifecycle",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "a11y": {
+      "usage": "cdp.js a11y [--text <文本>|--selector <css>] [--match exact|contains] [--depth N=8] [--max-nodes 2000] [--timeout ms=10000] [--nth N] [--mark-js] [--group] [--ref [--max-refs N=50] [--locator]] [--json] [--target 页]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data=旧 chromeuse-a11y/1 报告，脚本改读 .data.*；超时/降级/定位失败为失败信封且带 data）",
+      "detail": "a11y 树感知（只读；Accessibility 域，零 Input/零页面副作用）：无定位=主文档整树 Accessibility.getFullAXTree；--text/--selector=该元素子树（Accessibility.getPartialAXTree，复用 locator 跨同源 iframe；--text 匹配 DOM 文本而非 a11y name，图标按钮用 --selector；多候选不猜需 --nth，--text 可加 --match exact|contains）。**体积控制（G4）**：--depth 默认 8（CDP 层数，root=第 1 层；0=全量；重页面先 --depth 裁剪），节点上限 --max-nodes 默认 2000（**输出**上限：CDP 响应仍为请求深度内的全量，客户端截断+omitted 计数）。**超时到点必返（GQ-010 B）**：--timeout 默认 10000ms，浅层优先两段式（depth=3 用 35% 预算，深段用剩余）——深段超时返回浅层真实 partial + timedOut:true（exit 1），第一段即超时返回空树+timedOut:true，绝不挂死；超时/失败 stderr 提示替代通道（cdp.js exec DOM.getDocument / screenshot）。输出=紧凑缩进行 `role \"name摘要\" (x,y wxh) [F/C/D]`（F=focusable，C=可点击角色，D=disabled；bounds 仅前 150 个节点取框，其余省略）；--json=chromeuse-a11y/1（nodeCount/truncated/timedOut/partial/depthMode/stages/nodes）。iframe：只输出 CDP 主文档树（同源 iframe 内容用 --text 定位进入其子树）。**--ref（B5 引用句柄）**：每行前缀 @eN（e1 起、行序稳定），并把引用表落 tmpdata/refs/<targetId>.json（framePath/role/name/cssPath/container/rect/backendNodeId/代际 loaderId）；只收 clickable|focusable 且已取得 rect 的节点（前 150 bounds 限内），--max-refs 默认 50；--locator 附可持久化定位器（供 flow 固化）。**v1 边界**：全树 @eN 只覆盖主文档，跨 frame ref 用 --text/--selector partial 树（带 framePath）。消费 = click/type/hover --ref @eN（三级定位链 cssPath→role+name→container，命中 0/身份不符 → E_REF_STALE，>1 → E_AMBIGUOUS，不猜）；导航/刷新/元素替换即失效，重新 a11y --ref。**B6a 快照分级/降噪**：--find \"文本\"|\"/正则/i\"（树内检索，回命中行+根到节点路径+±2 行上下文，文本叶子去重；≥2KB 万节点页只回单命中）；--diff（身份键 backendDOMNodeId→结构路径兜底；新增/变化行前缀 *；无基线/导航/口径变化 → forcedFull:true 全量；基线 tmpdata/a11y-baseline/<targetId>.json）；--out <file>（全量快照落盘，stdout 只回 {nodes,file,snapshotId}）；--cursor（--cursor-size 默认 200，--cursor-token 续页零 CDP 读基线视图；可与 --find/--diff 组合，与 --out 互斥）；--exclude <css>（子树剪除）；--frames same-origin（Page.getFrameTree 递归→逐帧 getFullAXTree({frameId})→DOM.getFrameOwner 挂父树，单帧失败进 frameErrors[] 不整体失败；88 忽略 frameId → framesUnsupported+approximate 如实报不支持）；--visible-only（遮挡过滤，默认关）。**C11 N12 --mark-js（默认关）**：CDP DOMDebugger 扫描直接 click 监听节点并与 AX 树 backendDOMNodeId join，对「可交互但无 role/name」的行加 [J]（只覆盖直接监听——React 根委托元素级不可见；handler 源码不可得；能力不支持按 error.code 能力闸降级并明确告警）；只加标记不改节点数/行序。默认不带新旗标输出逐字节不变；组合顺序=降噪→diff→find→cursor→out。**C6 --group（默认关，opt-in）**：渲染层语义分组——landmark 行（main/nav/header/footer/aside/section/region/search 及 HTML 标签同义）开组、嵌套 landmark 成子组、组外散行按连续段成 flow 组；组内同父同角色连续 run 合并为一行（role ×N [flags]: @e3 \"名\" | @e4 \"名\"），冗余行折叠（InlineTextBox/ListMarker/无名 generic 包装；有 name/ref/flag 绝不折叠）；bounds 在分组态省略（设计内压缩），@eN 全树序与编号不变（编号源=报告行，分组只是展示形态）；与 --find/--diff/--cursor/--out 互斥（那些旗标自带输出视图）。实测缩减率随页面结构（合成样本 ≥30%），--json data.groupView 给 stats+组清单",
+      "flags": [
+        "--depth",
+        "--max-nodes",
+        "--timeout",
+        "--mark-js",
+        "--group",
+        "--ref",
+        "--find",
+        "--diff",
+        "--out",
+        "--cursor",
+        "--exclude",
+        "--frames",
+        "--visible-only",
+        "--json"
+      ],
+      "group": "perception",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "a11y 树快照（体积控制/超时必返/--ref 引用表/--find·--diff·--cursor/降噪三件/--group 语义分组）"
+    },
+    "css": {
+      "usage": "cdp.js css --text <文本>|--selector <css> [--match exact|contains] [--computed] [--matched] [--timeout ms=5000] [--nth N] [--json] [--target 页]",
+      "summary": "--json = chromeuse-cli/1 成功信封（data=旧 chromeuse-css/1 报告，脚本改读 .data.*；定位失败为 E_LOCATE 失败信封且带 data）",
+      "detail": "元素样式感知（只读）：定位复用 locator 跨同源 iframe（多候选不猜需 --nth）。--computed（默认）=页面侧 getComputedStyle（Runtime.evaluate；不启用 CSS 域、不做 nodeId 映射——实现成本最低），全量属性按名排序输出 `name: value`；--matched=CSS.getMatchedStylesForNode（DOM.enable+CSS.enable，结束 CSS.disable），输出规则来源 origin/选择器/media/属性（规则上限 200 条截断标注）；两者可同给。--json=chromeuse-css/1（element/computed/matched/errors）。注意：--timeout 是取数预算，连接层固定 5s",
+      "flags": [
+        "--computed",
+        "--matched",
+        "--json"
+      ],
+      "group": "perception",
+      "since": null,
+      "jsonAllowed": true,
+      "title": "元素样式感知（--computed 默认；--matched 规则来源；--json=chromeuse-css/1）"
+    },
+    "popup-guard": {
+      "usage": "cdp.js popup-guard scan|test|on|off --target <pageId|url子串|title子串> [--rules <file>] [--app <slug>] [--seconds 60] [--timeout ms]",
+      "summary": "广告/推广弹窗拦截体系（V202610150003，P1=A 路线 DOM 层 MutationObserver 守卫）：scan=只读扫描当前页命中规则与候选弹窗节点（取证不动作）｜test=dry-run 注入观察 --seconds（1~600，默认 60）只记录不动作 → 输出将拦截清单（上线前误杀检验）｜on=注入页侧守卫（真动作；仅页内生效——刷新/导航后失效，跨导航用 flow replay --popup-guard）｜off=摘除守卫（幂等，现场还原）。规则来源：--rules 显式文件 > app（--app 或按 URL 识别；webapp 有 popup-rules.jsonc=整体为准不合并全局）> 全局 config/popup-rules.jsonc。红线：零合成事件/零网络层拦截（B 路线属 P3）",
+      "detail": "",
+      "flags": [
+        "--rules",
+        "--app",
+        "--seconds"
+      ],
+      "group": "escape",
+      "since": null,
+      "jsonAllowed": false,
+      "title": "广告/推广弹窗拦截（MutationObserver 守卫；scan/test/on/off；零合成/零网络拦截）"
+    },
+    "record": {
+      "usage": "cdp.js record [--duration ms] [--out file] [--target 选择器(单页降级)] [-v] [--lock] [--no-sentinel] [--full-input] [--clipboard-policy <text|masked|meta>] [-v 时: --video-width 960 --video-quality 60 --video-interval 1000]",
+      "summary": "默认全标签页录制（V202609080013）：Target.setAutoAttach 自动附挂全部存量/新增标签页，每 target 分配 tab-N 别名+独立错误隔离，事件双标 tab+targetId（V202609090003 起另带 ch=binding|beacon 回传通道标记），关 tab 不丢已录事件（pagehide 终刷）",
+      "detail": "--target = 单标签页降级录制；SIGINT 或 --duration 停止落盘 tmpdata/events/；互斥语义（V202610200001）=**默认无锁**（锁只保留「打开页签并获取 pageId」层=tab-helper 锁页 CAS；无锁路径零副作用：不建 locks 目录/不写锁文件/不起 heartbeat），--lock = 可选显式互斥（兼容旧脚本语义）；采集失效自愈（V202609090003）：10s 哨兵探针（OK→SUSPECT→LOST 状态机，LOST 自动重注入 reInject 静默模式，节流 3s/片段≤3/会话≤5，3 连败落盘头 injectLost:true）+ renderer 替换重附挂自动重注入 + WS 断开有界重连一次（5s 未成响亮 stopAll 落盘头 wsDown:true），--no-sentinel 可关哨兵；-v = 录屏兜底（V202609090002 显式开启制，默认关零开销）：每 target 一路 Page.startScreencast 帧流落 tmpdata/video/<session>/（index.json=chromeuse-video/1），事后 node tools/cdp.js diff-video <事件流> 出对照报告；--video-* 参数仅 -v 时生效（无 -v 静默忽略）；分层录制：--full-input = full 档（wheel 200ms 累计/focusin/focusout/auxclick/F1-F12 keydown；缺省 semantic 默认档零新增监听，full 档事件=取证原料、蒸馏默认不映射 flow）；--clipboard-policy <text|masked|meta> = 剪贴板三事件脱敏档（默认 text 内容截 200 入流+len 原始全长；masked 恒 *** 保留 len；meta 仅 len 内容零入流；password 目标恒 *** 优先于一切档位；优先级 CLI > config recorder.clipboardPolicy > 默认）；--async = 作业化（**须显式 --target**；主进程立即返回 jobId/status=running/stateFile，进度/终态用 `cdp.js job status <id>` 查；--async 不支持 --json）",
+      "flags": [
+        "--duration",
+        "--lock",
+        "--no-sentinel",
+        "--full-input",
+        "--clipboard-policy",
+        "--async"
+      ],
+      "group": "record",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "record-stop": {
+      "usage": "cdp.js record-stop",
+      "summary": "对运行中的 record 发 POST /__stop 优雅停止并落盘",
+      "detail": "",
+      "flags": [],
+      "group": "record",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "diff-video": {
+      "usage": "cdp.js diff-video <recording-*.json> [--video-file <mp4>] [--t0 <iso>] [--mp4] [--out file]",
+      "summary": "事件流×录屏帧对照报告（chromeuse-videodiff/1 落 tmpdata/videodiff/）：每个 click/dblclick/uiAppear/navigate 事件 → 前后最近帧（路径+Δt，按 tab 分列）",
+      "detail": "默认按 session.id 自动定位 tmpdata/video/<session>/index.json（缺失扫帧目录重建）；--video-file = 外部 mp4 兼容（bin/ffprobe 取时长，--t0 缺省 session.startedAt，对齐误差 ±2s 级）；--mp4 = 帧序列合成 mp4（bin/ffmpeg -framerate 2）；疑点帧交 observer ≤25 帧/批",
+      "flags": [
+        "--video-file",
+        "--t0",
+        "--mp4"
+      ],
+      "group": "forensics",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "evidence-pack": {
+      "usage": "cdp.js evidence-pack <recording-*.json|目录>... [--gap-seconds 300] [--out 目录] [--title 标题]",
+      "summary": "验收回放证据包（V202609170003，chromeuse-evidence-pack/1 落 tmpdata/evidence/evidence-pack-<时间戳>/）：多段录制产物（事件流 chromeuse-events/1 + 录屏帧流 chromeuse-video/1）按绝对时间戳归一到统一时间轴（timeline.json：各段起止/相对偏移/事件与帧统计/关键帧索引/损坏段登记）",
+      "detail": "段间间隔>阈值（默认 300s）标记段间中断、时间交叠标 overlap，均不静默拼接；关键帧 = 显著事件（click/dblclick/uiAppear/navigate，与 diff-video 同口径）前后最近帧路径引用（每段上限 20）；README.md 取证自足（段清单/时间轴/文件索引/生成命令与环境）；索引式证据包——视频/事件流原位引用不复制不转码（v1 边界）；输入支持：recording-*.json 文件列表 / 父目录（非递归自动发现）/ 录屏会话目录（含 index.json 按 session.id 反查事件流）；纯本地聚合零 CDP 连接；损坏段如实登记 timeline.damaged 不中断打包",
+      "flags": [
+        "--gap-seconds",
+        "--out",
+        "--title"
+      ],
+      "group": "forensics",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "identify": {
+      "usage": "cdp.js identify [--url <url>] [--target 选择器] [--assert-app <slug>] [--note 备注]",
+      "summary": "应用识别（matchers 分段锚定+约束度打分，用户断言优先）",
+      "detail": "多命中问用户一次并会话内记住；--assert-app = 用户同意后的记忆化（追加 tmpdata/url-assertions.jsonl）",
+      "flags": [
+        "--url",
+        "--assert-app",
+        "--note"
+      ],
+      "group": "identify",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "events-summary": {
+      "usage": "cdp.js events-summary <recording-*.json> [--out file]",
+      "summary": "确定性预处理：噪声过滤/IME 折叠/类型分布统计",
+      "detail": "",
+      "flags": [
+        "--out"
+      ],
+      "group": "identify",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "recorder-convert": {
+      "usage": "cdp.js recorder-convert <DevTools导出.json> [--out flow.json]",
+      "summary": "T2 兜底转换器：DevTools Recorder JSON → flow 草案（不可映射步骤出 warning）",
+      "detail": "",
+      "flags": [
+        "--out"
+      ],
+      "group": "identify",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "browser-restart": {
+      "usage": "cdp.js browser-restart [--url <browserUrl>] [--timeout ms=30000]",
+      "summary": "优雅重启浏览器（Y1 治本产品化，V202609100002）：Browser.close（ExitType:Normal 无恢复气泡）→ keep-alive 自动拉起（NAS chrome-browser 容器特有）→ 探活轮询 → 域级深检 → tab 清单",
+      "detail": "用途 = CDP 操作过多/DevTools 域层损伤（per-target -32601）时的环境重置，比 docker restart 干净；⚠ 爆炸半径=整浏览器（所有 tab 关闭）；⚠ 环境边界：无自动重启机制的环境（如 Windows 桌面端）close 后需手动重启浏览器再重试探活（本命令幂等）；无 keep-alive 环境也可先 `node tools/cdp.js browser-up` OS 级拉起调试实例（**up=进程级启动 / restart=CDP 级重启**，二者互补）；超时兜底建议见输出",
+      "flags": [
+        "--timeout"
+      ],
+      "group": "escape",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "doctor": {
+      "usage": "cdp.js doctor [--url <browserUrl>] [--timeout ms=5000]",
+      "summary": "CDP 通道健康一次性诊断（V202609130003，chromeuse-cdp-doctor/1 JSON）：browser 版本（browser.advisory=低于 MCP 已知降级线 94 时提示走 cdp.js 主通道，非失败）/targets 全列表摘要（数量+type/url/attached——target 堆积可见）/wsLatency 3 次 Target.getTargets 往返校样/screenshotProbe 首个 page 型 target 试拍（bringToFront 前置单次不重试，有标签置前副作用）/multiClientHint 多客户端共用 9222 现状提示（chromeuse 短连接 × chrome-devtools MCP 长驻共存是架构现状）",
+      "detail": "exit 0=诊断完成（健康度看 JSON 字段）｜1=通道不可达无从诊断",
+      "flags": [
+        "--timeout"
+      ],
+      "group": "diagnostics",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "doctor-forensics": {
+      "usage": "cdp.js doctor-forensics [--target 选择器] [--symptom \"来源/目标页/错误码原文\"] [--timeout ms=3000] [--max-targets 3] [--no-control-tab] [--no-front] [--out file] [--url <browserUrl>]",
+      "summary": "CDP 失效分型取证（V202609300001，chromeuse-cdp-forensics/1）：S0 环境+S1 HTTP 面+S2 WS/browser 级（SystemInfo.getProcessInfo fail-soft 记 unknown）+S3 per-target 矩阵（attach 2s/单发 3s；主 target bringToFront 前置，--no-front 全关）+S4 对照 tab（条件触发：S3 有探针死——about:blank background:true 自开自关，--no-control-tab 可关）+S5 judgeLayers 八层分型 M/A1/A2/B/C/D/E/F/G（恒 advisory，不自动恢复）",
+      "detail": "探针全单发不重试；总预算硬帽 120s 超帽标 truncated 照常落盘；⚠ 通道全死也照常落盘（与 doctor 快速 die 相反——通道死本身=A/B 判定原料）；默认落 tmpdata/cdp-forensics/forensics-<时间戳>.json + stdout 分型摘要；exit 0=取证落盘完成（无论判定/通道死活）｜1=取证自身失败（参数错/写盘失败）——绝无 exit 2；恢复动作映射与批准线 → playbook §失效分型取证协议 v1",
+      "flags": [
+        "--symptom",
+        "--max-targets",
+        "--no-control-tab",
+        "--no-front",
+        "--out"
+      ],
+      "group": "diagnostics",
+      "since": null,
+      "jsonAllowed": false
+    },
+    "grid": {
+      "usage": "cdp.js grid locate --col <列头文字> --row <N> [--selector <css>] [--keep-scroll] [--match exact|contains] [--target 页] [--timeout ms] | cdp.js grid scroll-to --row <N> [--col <列头文字>] [--selector <css>] [--restore-scroll] [--match exact|contains] [--target 页] [--timeout ms]",
+      "title": "虚拟化网格定位/滚动（滚动渲染后复读；locate 默认还原滚动）",
+      "summary": "虚拟化网格（react-data-grid v6 `.react-grid-*`/v7 `.rdg-*`）定位/滚动（有页面滚动副作用）：locate=按列头文字+行号定位，必要时滚动并轮询复读，输出 rect/值/可见性；默认还原滚动（--keep-scroll 保留）；scroll-to=只滚动到目标行列并保留现场（--restore-scroll 还原），供 extract --kind grid 复读",
+      "detail": "读数走 extract --kind grid（只读不滚动）；本命令专管滚动渲染（C6 纪律）：列头按 rect.left 视觉序（DOM 序≠视觉序），--col 文字→data 索引；离屏未渲染≠空值；滚动后派发一次原生 scroll 通知令 RDG 重算虚拟列（POC F2：程序化 scrollLeft 不自动触发列虚拟化）；输出 visibleRows/totalRows/scroll before→after；未命中 E_NOT_FOUND 且 hint 含「离屏未渲染≠空值」；本命令不支持 --json（E_USAGE 拒绝面）",
+      "flags": [
+        "--col",
+        "--row",
+        "--selector",
+        "--keep-scroll",
+        "--restore-scroll",
+        "--match"
+      ],
+      "group": "grid",
+      "since": "V20261104011 C9 网格支持",
+      "jsonAllowed": false
+    },
+    "handoff": {
+      "usage": "cdp.js handoff --reason \"<人需完成的事>\" [--target 页] [--timeout-ms ms=600000] [--signal <path>] | cdp.js handoff --wait <id> | cdp.js handoff --status [<id>] | cdp.js handoff --cancel <id>",
+      "summary": "人机接力（2FA/支付/审批交还用户；C2 #128）：默认 start 落盘即返 HUMAN REQUIRED 横幅，用户完成后 touch 信号文件续跑（--wait 阻塞轮询）；状态文件 tmpdata/handoff/<id>.json",
+      "detail": "状态机 waiting→confirmed（信号文件出现）/expired（now≥deadline）/cancelled（--cancel），终态不可逆；活跃判据=state∧deadline 双字段（读者侧即时判定：滞留 waiting 的超时文件不永久豁免页签回收）；信号默认 tmpdata/handoff/<id>.continue，agent 转告用户后执行 touch \"<signalPath>\"（--json data.signalPath 机器可靠提取）；--timeout-ms 默认 600000（10min）、上限 3600000（1h 硬帽），--wait 不接 timeout（等待预算=deadline 单源）；id 支持唯一前缀（多命中 E_AMBIGUOUS 不猜）；页签全程零 activate/bringToFront、等待期豁免 tab-govern 回收、超时保留不关；留证=前后截图 best-effort（2s fail-soft，失败记 null）+ audit action handoff.created/confirmed/expired/cancelled；契约 → references/mechanisms.md §23",
+      "flags": [
+        "--reason",
+        "--wait",
+        "--status",
+        "--cancel",
+        "--target",
+        "--timeout-ms",
+        "--signal",
+        "--json"
+      ],
+      "group": "automation",
+      "since": "V20261113009",
+      "jsonAllowed": true,
+      "title": "人机接力 handoff（start/--wait/--status/--cancel；touch 信号续跑，页签永不置前）"
+    },
+    "browser-up": {
+      "usage": "cdp.js browser-up [--timeout ms=20000] [--proxy <url>] | cdp.js browser-up --stop | cdp.js browser-up --status",
+      "summary": "OS 级拉起调试实例（批C2/R2）：校验 chrome 三键 → 发现浏览器可执行 → 幂等探测（端口已就绪=复用现有实例）→ spawn 常驻（独立 user-data-dir）→ 等 /json/version 就绪 → state 落盘；--stop 显式关停（进程组信号 → 兜底 CDP Browser.close）/ --status 只读查询",
+      "detail": "与 browser-restart 分工：up=进程级启动（从「无调试实例」到「有」；无 keep-alive 环境如 Windows 桌面端补齐空白）/ restart=CDP 级重启（Browser.close 依赖容器 keep-alive 自动拉起，治 DevTools 域损伤）；仅 Chromium 内核（Chrome/Edge/Brave/Chromium——Firefox/Safari 不支持 CDP）；userDataDir 必须独立非默认（绝不 attach 日常实例；Chrome 136+ 亦要求）；默认常驻，登录态保留在独立 profile（首次各网站需手动登录一次）；--timeout=就绪预算（默认 20000ms，500~120000）；--proxy <url>=注入 Chromium `--proxy-server`（V20261117014 ISSUE-3，用户裁定 b：config.proxy 保持空串常态、需要时命令带参数）——优先级 CLI --proxy > env CHROMEUSE_BROWSER_PROXY > config.proxy.httpProxy，三者皆空不注入（与旧版逐字节同）；仅 http/https/socks5 前缀，非法值 E_USAGE；只影响被拉起实例，已启动实例需先 --stop；state 记录脱敏值（user:pass → ***@，写盘层再归一为 <redacted:credentials>@）；state 文件 tmpdata/browser/launch-state.json；连接失败自动保障=全局 flag --auto-launch（仅 browserUrl 主机为 127.0.0.1/localhost 才确保，非本地跳过并 warn；--proxy 同样生效）；本命令不支持 --json（E_USAGE 拒绝面）；机制 → references/mechanisms.md §26",
+      "flags": [
+        "--timeout",
+        "--proxy",
+        "--stop",
+        "--status"
+      ],
+      "group": "escape",
+      "since": "V20261117008 批C2/R2",
+      "jsonAllowed": false
+    }
+  }
+}
